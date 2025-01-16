@@ -372,7 +372,7 @@ void crypto_example(void) {
 
 int main(void) {
     char output_buf[128] = {0};
-    uint8_t uart_buf[100];
+    uint8_t uart_buf[0x10000];
     msg_type_t cmd;
     int result;
     uint16_t pkt_len;
