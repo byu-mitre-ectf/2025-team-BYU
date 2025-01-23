@@ -190,6 +190,12 @@ int list_channels() {
 int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
     int i;
 
+    // ensure that the data provided from the UART is the exact same length as a subscription update packet
+    if (pkt_len != sizeof(subscription_update_packet_t)) {
+        print_error("Invalid subscription update packet\n");
+        return -1;
+    }
+
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
         print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
