@@ -233,6 +233,13 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     uint16_t frame_size;
     channel_id_t channel;
 
+    // check that there's enough data to extract the channel and timestamp
+    // otherwise frame_size can underflow and lead to a huge number
+    if (pkt_len <= (sizeof(new_frame->channel) + sizeof(new_frame->timestamp))) {
+        print_error("Packet length of DECODE frame is too small\n");
+        return -1;
+    }
+    
     // Frame size is the size of the packet minus the size of non-frame elements
     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
     channel = new_frame->channel;
