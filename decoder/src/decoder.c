@@ -56,6 +56,10 @@
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
+#define CHACHA_KEY_LENGTH 32
+#define POLY_KEY_LENGTH 16
+#define RSA_KEY_LENGTH 32
+
 /**********************************************************
  ********************* STATE MACROS ***********************
  **********************************************************/
@@ -102,10 +106,23 @@ typedef struct {
  **********************************************************/
 
 typedef struct {
+    uint8_t key[CHACHA_KEY_LENGTH];
+} chacha_poly_key_t;
+
+typedef struct {
+    uint8_t key[POLY_KEY_LENGTH];
+} poly_key_t;
+
+typedef struct {
+    uint8_t key[RSA_KEY_LENGTH];
+} rsa_key_t;
+
+typedef struct {
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
+    chacha_poly_key_t key;
 } channel_status_t;
 
 typedef struct {
@@ -120,6 +137,14 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
+// Next timestamp allowed
+timestamp_t next_time_allowed = 0;
+
+// rsa key to decrypt subscriptions
+rsa_key_t subscription_decrypt_key;
+
+// poly key to verify subscriptions
+poly_key_t subscription_verify_key;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -196,12 +221,15 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         return -1;
     }
 
+    //add decryption stuff here
+
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
         print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
         return -1;
     }
 
+    // TODO: Change this to only update a specified channel instead of the first one
     // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
@@ -296,6 +324,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
+            memset(&subscription[i].key, 0, sizeof(chacha_key_t));
         }
 
         // Write the starting channel subscriptions into flash.
