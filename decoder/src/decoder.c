@@ -56,10 +56,6 @@
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
-#define CHACHA_KEY_LENGTH 32
-#define POLY_KEY_LENGTH 16
-#define RSA_KEY_LENGTH 32
-
 /**********************************************************
  ********************* STATE MACROS ***********************
  **********************************************************/
@@ -105,17 +101,6 @@ typedef struct {
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
 
-typedef struct {
-    uint8_t key[CHACHA_KEY_LENGTH];
-} chacha_poly_key_t;
-
-typedef struct {
-    uint8_t key[POLY_KEY_LENGTH];
-} poly_key_t;
-
-typedef struct {
-    uint8_t key[RSA_KEY_LENGTH];
-} rsa_key_t;
 
 typedef struct {
     bool active;
