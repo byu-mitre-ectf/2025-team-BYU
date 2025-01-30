@@ -21,6 +21,7 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
+#include "secrets.h"
 
 #include "simple_uart.h"
 
@@ -309,7 +310,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
-            memset(&subscription[i].key, 0, sizeof(chacha_key_t));
+            memset(&subscription[i].key, 0, sizeof(chacha_poly_key_t));
         }
 
         // Write the starting channel subscriptions into flash.
