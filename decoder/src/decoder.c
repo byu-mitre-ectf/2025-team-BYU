@@ -83,6 +83,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
+    chacha_poly_key_t key;
 } subscription_update_packet_t;
 
 typedef struct {
@@ -125,12 +126,6 @@ flash_entry_t decoder_status;
 
 // Next timestamp allowed
 timestamp_t next_time_allowed = 0;
-
-// rsa key to decrypt subscriptions
-rsa_key_t subscription_decrypt_key;
-
-// poly key to verify subscriptions
-poly_key_t subscription_verify_key;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
