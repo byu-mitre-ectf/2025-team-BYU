@@ -21,6 +21,8 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
+//The library that does delay
+#inlcude <time.h>
 
 #include "simple_uart.h"
 
@@ -102,6 +104,7 @@ typedef struct {
  **********************************************************/
 
 typedef struct {
+    //Maybe we need a channel key and channel valid update.
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
@@ -187,39 +190,79 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
+
+//We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
+//int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t new packet) {
+
 int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
-    int i;
+    // This is the stuct to hold the decoded raw packet data.
+    typedef struct {
+        uint8_t bytes[24]; // Array of 24 bytes
+    } uint24_t;
+    
 
-    // ensure that the data provided from the UART is the exact same length as a subscription update packet
-    if (pkt_len != sizeof(subscription_update_packet_t)) {
-        print_error("Invalid subscription update packet\n");
-        return -1;
+    /*
+    //Can either use rand() or the onboard random number generator chip??
+    int randomDelay() {
+        int milli_seconds = randomNumberGenerator % 500;
+
+        // Storing start time
+        clock_t start_time = clock();
+
+        // looping till required time is not achieved
+        while (clock() < start_time + milli_seconds);
     }
+        
+    randomDelay();
+    WhatSizeIsTheMacTagPlusDataSize decryptedRaw = decode(encryptedPacket, KEY);
+    randomDelay();
 
-    if (update->channel == EMERGENCY_CHANNEL) {
-        STATUS_LED_RED();
-        print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
-        return -1;
-    }
-
-    // Find the first empty slot in the subscription array
-    for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
-        if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
-            decoder_status.subscribed_channels[i].active = true;
-            decoder_status.subscribed_channels[i].id = update->channel;
-            decoder_status.subscribed_channels[i].start_timestamp = update->start_timestamp;
-            decoder_status.subscribed_channels[i].end_timestamp = update->end_timestamp;
-            break;
+    MacTagSize verificationHash;
+    WHATISITHISSIZE encryptedRawData;
+    
+    memcpy_s(&verificationHash, WHATSIZE, decryptedRaw, WHATSIZE);
+    memcpy_S(&encryptedRawData, ?SIZE, decryptedRaw + WHATSIZE, ?SIZE);
+    
+    Poly1305HashCheck(MacTagSize verificationHash) {
+        computedHash = computeHash();
+        if( verificationHash != computedHash){
+            return -1;
         }
     }
+    
 
-    // If we do not have any room for more subscriptions
-    if (i == MAX_CHANNEL_COUNT) {
-        STATUS_LED_RED();
-        print_error("Failed to update subscription - max subscriptions installed\n");
+    uint24_t decryptedRawData = chachaDecrypt(encryptedRawData, publicKey);
+
+    if (sizeof(decryptedRawData) != 24 || decryptedRaw != WHATSIZE IS THIS || verficationHASH != WHATSIZE) {
+        //Invalid data size.
         return -1;
     }
+    
+    //Secure write from the decrypted raw packet into the subscription_update_packet_t struct
+    memcpy_s(update->decoder_id, 4, decryptedRawData, 4);
+    memcpy_s(update->start_timestamp, 4, decryptedRawData + 4, 8);
+    memcpy_s(update->end_timestamp, 8, decryptedRawData + 12, 8);
+    memcpy_s(update->channel, 4, decryptedRawData + 20, 4);
+    */
 
+    //Checks that channel is valid.
+    if (update->channel < 1 || update->channel > 8) {
+        return -1;
+    }
+    
+    //I wonder if we are arranging each channel in the array position as its channel number 0 = emergency and 8 = Channel 8
+    //I want to do something like this.
+    //Maybe I need to parse update->channel as an int and then use that to access the subscribed_channels array.
+    /*
+    decoder_status.subscribed_channels[update->channel].active = true;
+    decoder_status.subscribed_channels[update->channel].id = update->channel;
+    decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
+    decoder_status.subscribed_channels[update->channel].end_timestamp = update->end_timestamp;
+
+    My idea to writing to flash is to sandwhich the subscription between canaries?
+    [canary] [subscriptions struct] [canary]
+
+    */
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     // Success message with an empty body
