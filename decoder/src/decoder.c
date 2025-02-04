@@ -155,12 +155,30 @@ int is_subscribed(channel_id_t channel) {
 */
 int list_channels() {
     list_response_t resp;
-    pkt_len_t len;
+    pkt_len_t len = 0;
 
     resp.n_channels = 0;
 
+    // delete any lingering data
+    for (uint16_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
+        resp.channel_info[i].channel = 0;
+        resp.channel_info[i].start = 0;
+        resp.channel_info[i].end = 0;
+    }
+
     for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].active) {
+            if (resp.n_channels >= MAX_CHANNEL_COUNT) {
+                // too many channels
+                // TODO: Make this a defined value
+                return 1;
+            }
+            if (resp.channel_info[i].channel != 0 ||
+                resp.channel_info[i].start != 0 ||
+                resp.channel_info[i].end != 0) {
+                    // data in chanel_info array corrupted
+                    return 2;
+            }
             resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
             resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
             resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
@@ -170,6 +188,11 @@ int list_channels() {
 
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
 
+    uint16_t maxLen = sizeof(MAX_CHANNEL_COUNT) + (sizeof(channel_info_t) * MAX_CHANNEL_COUNT);
+    if (len > maxLen) {
+        // packet too long
+        return 3;
+    }
     // Success message
     write_packet(LIST_MSG, &resp, len);
     return 0;
