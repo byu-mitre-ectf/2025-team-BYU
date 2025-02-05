@@ -46,6 +46,7 @@
 #define channel_id_t uint32_t
 #define decoder_id_t uint32_t
 #define pkt_len_t uint16_t
+#define channel_key_t HOWBIGISIT???
 
 /**********************************************************
  *********************** CONSTANTS ************************
@@ -84,6 +85,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
+    channel_key_t channel_key;
 } subscription_update_packet_t;
 
 typedef struct {
@@ -109,6 +111,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
+    channel_key_t channel_key;
 } channel_status_t;
 
 typedef struct {
@@ -192,26 +195,33 @@ int list_channels() {
 */
 
 //We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
-//int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t new packet) {
+//int update_subscription(pkt_len_t pkt_len, encrypted_packet *encryptedRaw) {
 
 int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
-    // This is the stuct to hold the decoded raw packet data.
-    typedef struct {
-        uint8_t bytes[24]; // Array of 24 bytes
-    } uint24_t;
-
     //Another possible way would be allocating a seperate section of memory
     /*
-    uint8_t *decryptedRawData = (uint8_t *)malloc(24 * sizeof(uint8_t));
+    uint8_t *decryptedData = (uint8_t *)malloc(24 * sizeof(uint8_t));
+    uint8_t *cipherText = (uint8_t *)malloc(24 * sizeof(uint8_t));
+    uint8_t *authTag = (uint8_t *)malloc(16 * sizeof*uint8_t));
+
+    //Free all the created memory arrays
+    int clean_data() {
+        free(decryptedData);
+        decryptedData = NULL;
+
+        free(cipherText);
+        cipherText = NULL;
+
+        free(authTag);
+        authTag = NULL;
+    }
     
-    
-    if (decryptedRawData == NULL) {
+    if (decryptedData == NULL || cipherText == NULL || authTag == NULL || ) {
             // Handle memory allocation failure
+            clean_data();
             return -1;
     }
-    */
     
-    /*
     //Can either use rand() or the onboard random number generator chip??
     int randomDelay() {
         int milli_seconds = randomNumberGenerator % 500;
@@ -222,16 +232,16 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         // looping till required time is not achieved
         while (clock() < start_time + milli_seconds);
     }
-        
-    randomDelay();
-    WhatSizeIsTheMacTagPlusDataSize decryptedRaw = decode(encryptedPacket, KEY);
-    randomDelay();
 
-    MacTagSize verificationHash;
-    WHATISITHISSIZE encryptedRawData;
     
-    memcpy_s(&verificationHash, WHATSIZE, &decryptedRaw, WHATSIZE);
-    memcpy_S(&encryptedRawData, ?SIZE, &decryptedRaw + WHATSIZE, ?SIZE);
+    if (memcpy_S(&cipherText, 24, encryptedRaw, 24) != 0) {
+        clean_data();
+        return -1;
+    }
+    if (memcpy_s(&authTag, 16, encryptedRaw + 24, 16) != 0) {
+        clean_data();
+        return -1;
+    }
     
     Poly1305HashCheck(MacTagSize verificationHash) {
         computedHash = computeHash();
@@ -239,38 +249,59 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
             return -1;
         }
     }
+
+    randomDelay();
+    decryptedData = decode(encryptedPacket, KEY, nonce);
+    randomDelay();
+
+    subscription_update_packet_t update;
     
+    //Secure write from the decrypted raw packet into the subscription_update_packet_t struct
+    //End if error is detected
+    if (memcpy_s(&update->decoder_id, 4, decryptedData, 4) != 0) {
+        clean_data();
+        return -1;
+    }
+    if (memcpy_s(&update->start_timestamp, 4, decryptedData + 4, 8) != 0) {
+        clean_data();
+        return -1;
+    }
+    if (memcpy_s(&update->end_timestamp, 8, decryptedData + 12, 8) != 0) {
+        clean_data();
+        return -1;
+    }
+    if (memcpy_s(&update->channel, 4, decryptedData + 20, 4) != 0) {
+        clean_data();
+        return -1;
+    }
 
-    uint24_t decryptedRawData = chachaDecrypt(encryptedRawData, publicKey);
-
-    if (sizeof(decryptedRawData) != 24 || decryptedRaw != WHATSIZE IS THIS || verficationHASH != WHATSIZE) {
-        //Invalid data size.
+    //Memory size check
+    //ADD ANOTHER ONE FOR CHANNEL_KEY
+    if(sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->stop_timestamp) != sizeof(uint64_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->channel_key) != sizeof(WHATEVERSIZEITIS)) {
+        clean_data();
         return -1;
     }
     
-    //Secure write from the decrypted raw packet into the subscription_update_packet_t struct
-    memcpy_s(&update->decoder_id, 4, &decryptedRawData, 4);
-    memcpy_s(&update->start_timestamp, 4, &decryptedRawData + 4, 8);
-    memcpy_s(&update->end_timestamp, 8, &decryptedRawData + 12, 8);
-    memcpy_s(&update->channel, 4, &decryptedRawData + 20, 4);
-    */
-
     //Checks that channel is valid.
     if (update->channel < 1 || update->channel > 8) {
+        clean_data();
+        return -1;
+    }
+
+    if(update->decoder_id != MAINDECODERIDSECRET) {
+        clean_data();
         return -1;
     }
     
     //I wonder if we are arranging each channel in the array position as its channel number 0 = emergency and 8 = Channel 8
     //I want to do something like this.
     //Maybe I need to parse update->channel as an int and then use that to access the subscribed_channels array.
-    /*
+
     decoder_status.subscribed_channels[update->channel].active = true;
     decoder_status.subscribed_channels[update->channel].id = update->channel;
     decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
     decoder_status.subscribed_channels[update->channel].end_timestamp = update->end_timestamp;
-
-    My idea to writing to flash is to sandwhich the subscription between canaries?
-    [canary] [subscriptions struct] [canary]
+    decoder_status.subscribed_channels[update->channel].channel_key = update->channel_key;
 
     */
     flash_simple_erase_page(FLASH_STATUS_ADDR);
@@ -278,11 +309,6 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
-    /*
-    This is to free up the memory allocated for the various byte arrays.
-    free(decryptedRawData);
-    decryptedRawData = NULL;
-    */
     
     return 0;
 }
