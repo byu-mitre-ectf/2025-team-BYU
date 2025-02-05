@@ -199,8 +199,18 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     typedef struct {
         uint8_t bytes[24]; // Array of 24 bytes
     } uint24_t;
-    
 
+    //Another possible way would be allocating a seperate section of memory
+    /*
+    uint8_t *decryptedRawData = (uint8_t *)malloc(24 * sizeof(uint8_t));
+    
+    
+    if (decryptedRawData == NULL) {
+            // Handle memory allocation failure
+            return -1;
+    }
+    */
+    
     /*
     //Can either use rand() or the onboard random number generator chip??
     int randomDelay() {
@@ -220,8 +230,8 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     MacTagSize verificationHash;
     WHATISITHISSIZE encryptedRawData;
     
-    memcpy_s(&verificationHash, WHATSIZE, decryptedRaw, WHATSIZE);
-    memcpy_S(&encryptedRawData, ?SIZE, decryptedRaw + WHATSIZE, ?SIZE);
+    memcpy_s(&verificationHash, WHATSIZE, &decryptedRaw, WHATSIZE);
+    memcpy_S(&encryptedRawData, ?SIZE, &decryptedRaw + WHATSIZE, ?SIZE);
     
     Poly1305HashCheck(MacTagSize verificationHash) {
         computedHash = computeHash();
@@ -239,10 +249,10 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     }
     
     //Secure write from the decrypted raw packet into the subscription_update_packet_t struct
-    memcpy_s(update->decoder_id, 4, decryptedRawData, 4);
-    memcpy_s(update->start_timestamp, 4, decryptedRawData + 4, 8);
-    memcpy_s(update->end_timestamp, 8, decryptedRawData + 12, 8);
-    memcpy_s(update->channel, 4, decryptedRawData + 20, 4);
+    memcpy_s(&update->decoder_id, 4, &decryptedRawData, 4);
+    memcpy_s(&update->start_timestamp, 4, &decryptedRawData + 4, 8);
+    memcpy_s(&update->end_timestamp, 8, &decryptedRawData + 12, 8);
+    memcpy_s(&update->channel, 4, &decryptedRawData + 20, 4);
     */
 
     //Checks that channel is valid.
@@ -267,6 +277,13 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
+
+    /*
+    This is to free up the memory allocated for the various byte arrays.
+    free(decryptedRawData);
+    decryptedRawData = NULL;
+    */
+    
     return 0;
 }
 
