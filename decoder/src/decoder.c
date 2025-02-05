@@ -197,7 +197,7 @@ int list_channels() {
 //We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
 //int update_subscription(pkt_len_t pkt_len, encrypted_packet *encryptedRaw) {
 
-int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
+int update_subscription(encrypted_data_t encryptedData) {
     //Another possible way would be allocating a seperate section of memory
     /*
     uint8_t *decryptedData = (uint8_t *)malloc(24 * sizeof(uint8_t));
@@ -216,7 +216,7 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         authTag = NULL;
     }
     
-    if (decryptedData == NULL || cipherText == NULL || authTag == NULL || ) {
+    if (decryptedData == NULL || cipherText == NULL || authTag == NULL) {
             // Handle memory allocation failure
             clean_data();
             return -1;
@@ -224,7 +224,7 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     
     //Can either use rand() or the onboard random number generator chip??
     int randomDelay() {
-        int milli_seconds = randomNumberGenerator % 500;
+        int milli_seconds = randomNumberGenerator % 100;
 
         // Storing start time
         clock_t start_time = clock();
@@ -242,17 +242,20 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         clean_data();
         return -1;
     }
-    
-    Poly1305HashCheck(MacTagSize verificationHash) {
-        computedHash = computeHash();
-        if( verificationHash != computedHash){
+
+    //Can implement memcmp() here
+    random_delay();
+    Poly1305HashCheck(MacTagSize authTag) {
+        computedHash = computeHash(cipherText);
+        if( authTag != computedHash){
             return -1;
         }
     }
-
-    randomDelay();
+    random_delay();
+    
+    random_delay();
     decryptedData = decode(encryptedPacket, KEY, nonce);
-    randomDelay();
+    random_delay();
 
     subscription_update_packet_t update;
     
@@ -281,14 +284,14 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         clean_data();
         return -1;
     }
-    
-    //Checks that channel is valid.
-    if (update->channel < 1 || update->channel > 8) {
+
+    if(update->decoder_id != MAINDECODERIDSECRET) {
         clean_data();
         return -1;
     }
-
-    if(update->decoder_id != MAINDECODERIDSECRET) {
+    
+    //Checks that channel is valid.
+    if (update->channel < 1 || update->channel > 8) {
         clean_data();
         return -1;
     }
@@ -309,7 +312,6 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
-    
     return 0;
 }
 
