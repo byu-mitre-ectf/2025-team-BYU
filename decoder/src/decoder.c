@@ -46,7 +46,6 @@
 #define channel_id_t uint32_t
 #define decoder_id_t uint32_t
 #define pkt_len_t uint16_t
-#define channel_key_t HOWBIGISIT???
 
 /**********************************************************
  *********************** CONSTANTS ************************
@@ -56,6 +55,9 @@
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
+#define SUBSCRIPTION_ENCRYPTED_PACKET 56
+#define POLY_AUTH_TAG 16
+#define CHANNEL_KEY_SIZE 256
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
@@ -81,11 +83,16 @@ typedef struct {
 } frame_packet_t;
 
 typedef struct {
+    uint8_t cipher_text[SUBSCRIPTION_ENCRYPTED_PACKET];
+    uint8_t auth_tag[POLY_AUTH_TAG];
+} encrypted_update_packet_t
+
+typedef struct {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    channel_key_t channel_key;
+    uint8_t channel_key[CHANNEL_KEY_SIZE]
 } subscription_update_packet_t;
 
 typedef struct {
@@ -111,7 +118,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    channel_key_t channel_key;
+    uint8_t channel_key[CHANNEL_KEY_SIZE]
 } channel_status_t;
 
 typedef struct {
@@ -195,36 +202,13 @@ int list_channels() {
 */
 
 //We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
-//int update_subscription(pkt_len_t pkt_len, encrypted_packet *encryptedRaw) {
-
-int update_subscription(encrypted_data_t encryptedData) {
+int update_subscription(encrypted_data_t *encryptedData) {
     //Another possible way would be allocating a seperate section of memory
     /*
-    uint8_t *decryptedData = (uint8_t *)malloc(24 * sizeof(uint8_t));
-    uint8_t *cipherText = (uint8_t *)malloc(24 * sizeof(uint8_t));
-    uint8_t *authTag = (uint8_t *)malloc(16 * sizeof*uint8_t));
-
-    //Free all the created memory arrays
-    int clean_data() {
-        free(decryptedData);
-        decryptedData = NULL;
-
-        free(cipherText);
-        cipherText = NULL;
-
-        free(authTag);
-        authTag = NULL;
-    }
-    
-    if (decryptedData == NULL || cipherText == NULL || authTag == NULL) {
-            // Handle memory allocation failure
-            clean_data();
-            return -1;
-    }
     
     //Can either use rand() or the onboard random number generator chip??
     int randomDelay() {
-        int milli_seconds = randomNumberGenerator % 100;
+        int milli_seconds = rand() % 100;
 
         // Storing start time
         clock_t start_time = clock();
@@ -233,73 +217,32 @@ int update_subscription(encrypted_data_t encryptedData) {
         while (clock() < start_time + milli_seconds);
     }
 
-    
-    if (memcpy_S(&cipherText, 24, encryptedRaw, 24) != 0) {
-        clean_data();
+    random_delay();
+    if (encryptedData->authTag != poly1305Hash(encryptedData->cipherText)) {
         return -1;
     }
-    if (memcpy_s(&authTag, 16, encryptedRaw + 24, 16) != 0) {
-        clean_data();
-        return -1;
-    }
-
-    //Can implement memcmp() here
-    random_delay();
-    Poly1305HashCheck(MacTagSize authTag) {
-        computedHash = computeHash(cipherText);
-        if( authTag != computedHash){
-            return -1;
-        }
-    }
-    random_delay();
-    
-    random_delay();
-    decryptedData = decode(encryptedPacket, KEY, nonce);
     random_delay();
 
     subscription_update_packet_t update;
     
-    //Secure write from the decrypted raw packet into the subscription_update_packet_t struct
-    //End if error is detected
-    if (memcpy_s(&update->decoder_id, 4, decryptedData, 4) != 0) {
-        clean_data();
-        return -1;
-    }
-    if (memcpy_s(&update->start_timestamp, 4, decryptedData + 4, 8) != 0) {
-        clean_data();
-        return -1;
-    }
-    if (memcpy_s(&update->end_timestamp, 8, decryptedData + 12, 8) != 0) {
-        clean_data();
-        return -1;
-    }
-    if (memcpy_s(&update->channel, 4, decryptedData + 20, 4) != 0) {
-        clean_data();
+    random_delay();
+    rsaDecrypt(encryptedData->cipherText, rsaKey, update);
+    random_delay();
+    
+    if(sizeof(update) != sizeof(encrypted_data_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->end_timestamp) != sizeof(uint64_t) || sizeof(update->channel_key) != sizeof(CHANNEL_KEY_SIZE)) {
         return -1;
     }
 
-    //Memory size check
-    //ADD ANOTHER ONE FOR CHANNEL_KEY
-    if(sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->stop_timestamp) != sizeof(uint64_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->channel_key) != sizeof(WHATEVERSIZEITIS)) {
-        clean_data();
-        return -1;
-    }
-
-    if(update->decoder_id != MAINDECODERIDSECRET) {
-        clean_data();
+    if(update->decoder_id != CHANGETHISdecoderId) {
         return -1;
     }
     
     //Checks that channel is valid.
-    if (update->channel < 1 || update->channel > 8) {
-        clean_data();
+    if (update->channel <=  || update->channel > 8) {
         return -1;
     }
-    
-    //I wonder if we are arranging each channel in the array position as its channel number 0 = emergency and 8 = Channel 8
-    //I want to do something like this.
-    //Maybe I need to parse update->channel as an int and then use that to access the subscribed_channels array.
 
+    //Writes the channel subscription to RAM.
     decoder_status.subscribed_channels[update->channel].active = true;
     decoder_status.subscribed_channels[update->channel].id = update->channel;
     decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
@@ -307,6 +250,8 @@ int update_subscription(encrypted_data_t encryptedData) {
     decoder_status.subscribed_channels[update->channel].channel_key = update->channel_key;
 
     */
+
+    //Writes the channel subscription to flash.
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     // Success message with an empty body
