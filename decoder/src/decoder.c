@@ -52,6 +52,7 @@
 #define MAX_CHANNEL_COUNT 8
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
+#define ENC_FRAME_SIZE (FRAME_SIZE+sizeof(timestamp_t))
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
@@ -72,9 +73,18 @@
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
 typedef struct {
+    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
     channel_id_t channel;
-    timestamp_t timestamp;
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
+} encrypted_frame_packet_t;
+
+typedef struct {
     uint8_t data[FRAME_SIZE];
+    timestamp_t timestamp;
+    channel_id_t channel;
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
 } frame_packet_t;
 
 typedef struct {
@@ -227,6 +237,23 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     return 0;
 }
 
+/** @brief Decrypts a tv frame packet
+ * 
+ *  @param pkt_len The length of the incoming packet.
+ *  @param enc_frame A pointer to the encrypted tv frame
+ *  @param new_frame A pointer to the packet to decrypt into
+ * 
+ *  @return 0 if successful. -1 on error.
+ */
+int decrypt_frame(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame, frame_packet_t *new_frame) {
+        //return -1 on error
+        return -1;
+    } else {
+        return 1;
+    }
+
+}
+
 /** @brief Processes a packet containing frame data.
  *
  *  @param pkt_len A pointer to the incoming packet.
@@ -234,10 +261,38 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
  *
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
-int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
+int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     char output_buf[128] = {0};
     uint16_t frame_size;
     channel_id_t channel;
+    frame_packet_t decrypted_frame;
+
+    //Is channel number an unsigned int >=0 and <=8?
+    if (enc_frame->channel >= 0 && enc_frame->channel <= 8) return -1;
+
+    //Is decoder subscribed to the channel?
+    if (!is_subscribed(enc_frame->channel)) return -1;
+
+    //is encrypted format valid (validate tag)
+    //hash compare
+
+    //wait random amount of time between 1 and 30 milliseconds
+    //sleep
+
+    // decrypt frame
+    // Encrypted and decrypted frames are the same size, so this should work.
+    // Then the decypted data can be put into the decrypted frame.
+    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame))
+    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->authTag, &enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE, decoder_status.subscribed_channels[enc_packet->channel]., &enc_frame->nonce, &decrypted_frame->data)) return -1;
+
+    //is the timestamp within decoder's subscription period
+
+
+    //is the timestamp >= next allowed
+
+    //play decoded TV frame
+
+    //set next allowed timestamp to current frame's timestamp+1
 
     // check that there's enough data to extract the channel and timestamp
     // otherwise frame_size can underflow and lead to a huge number
@@ -402,7 +457,9 @@ int main(void) {
         // Handle decode command
         case DECODE_MSG:
             STATUS_LED_PURPLE();
-            decode(pkt_len, (frame_packet_t *)uart_buf);
+            frame_packet_t frame_packet;
+            decrypt_frame(pkt_len, (encrypted_frame_packet_t *)uart_buf, &frame_packet);
+            decode(pkt_len, &frame_packet);
             break;
 
         // Handle subscribe command
