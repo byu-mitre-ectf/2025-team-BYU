@@ -87,6 +87,7 @@ int decrypt_asym(uint8_t *ciphertext, void *keyData, uint8_t *plaintext);
  * @param data A pointer to a buffer of length len containing the data
  *           to be hashed
  * @param len The length of the plaintext to hash
+ * @param key A pointer to a buffer of length POLY_KEY_SIZE (32 bytes) for use in computing the hash/digest
  * @param mac A pointer to a buffer of length POLY1305_DIGEST_SIZE (16 bytes) where the resulting
  *           hash output will be written to
  *
