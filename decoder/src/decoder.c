@@ -21,9 +21,10 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
-#include "secrets.h"
-
 #include "simple_uart.h"
+
+#include "adv_crypto.h"
+#include "secrets.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -83,7 +84,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    chacha_poly_key_t key;
+    uint8_t key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
@@ -109,7 +110,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    chacha_poly_key_t key;
+    uint8_t key[CHACHAPOLY_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -305,7 +306,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
-            memset(&subscription[i].key, 0, sizeof(chacha_poly_key_t));
+            memset(&subscription[i].key, 0, sizeof(subscription[i].key));
         }
 
         // Write the starting channel subscriptions into flash.
