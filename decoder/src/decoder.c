@@ -323,8 +323,11 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
      decrypted_frame->timestamp > decoder_status.subscribed_channels[decrypted_frame->channel].end_timestamp) {
         print_error("Timestamp outside of subscription time\n");
 
-        // delete key from memory
+        // delete key from memory and mark channel as unsubscribed
         memset(decoder_status.subscribed_channels[decrypted_frame->channel].key, 0, CHACHAPOLY_KEY_SIZE);
+        decoder_status.subscribed_channels[decrypted_frame->channel].active = false;
+        decoder_status.subscribed_channels[decrypted_frame->channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        decoder_status.subscribed_channels[decrypted_frame->channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
 
         // write deleted key from disk
         flash_simple_erase_page(FLASH_STATUS_ADDR);
