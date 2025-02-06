@@ -277,11 +277,27 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     channel_id_t channel;
     frame_packet_t decrypted_frame;
 
+    // check that there's enough data to extract the channel and timestamp
+    // otherwise frame_size can underflow and lead to a huge number
+    if (pkt_len <= sizeof(encrypted_frame_packet_t)) {
+        print_error("Packet length of DECODE frame is too small\n");
+        return -1;
+    }
+    print_debug("Packet length okay\n");
+
     //Is channel number an unsigned int >=0 and <=8?
-    if (enc_frame->channel >= 0 && enc_frame->channel <= 8) return -1;
+    if (enc_frame->channel >= 0 && enc_frame->channel <= 8) {
+        print_error("Channel outside of valid range\n");
+        return -1;
+    }
+    print_debug("Channel inside valid range\n");
 
     //Is decoder subscribed to the channel?
-    if (!is_subscribed(enc_frame->channel)) return -1;
+    if (!is_subscribed(enc_frame->channel)) {
+        print_error("Not subscribed to channel\n");
+        return -1;
+    }
+    print_debug("Decoder is subscribed to channel\n");
 
     //is encrypted format valid (validate tag)
     //hash compare
@@ -293,47 +309,44 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame))
-    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->authTag, &enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE, decoder_status.subscribed_channels[enc_packet->channel]., &enc_frame->nonce, &decrypted_frame->data)) return -1;
+    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->authTag,\
+     &enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE,\
+     &decoder_status.subscribed_channels[enc_packet->channel].key, &enc_frame->nonce,\
+     &decrypted_frame->data)) {
+        print_error("Decryption failed\n");
+        return -1;
+    } 
+    print_debug("Decryption succeeded\n");
 
     //is the timestamp within decoder's subscription period
+    if (decrypted_frame->timestamp < decoder_status.subscribed_channels[decrypted_frame->channel].start_timestamp ||\
+     decrypted_frame->timestamp > decoder_status.subscribed_channels[decrypted_frame->channel].end_timestamp) {
+        print_error("Timestamp outside of subscription time\n");
+
+        // delete key from memory
+        memset(decoder_status.subscribed_channels[decrypted_frame->channel].key, 0, CHACHAPOLY_KEY_SIZE);
+
+        // write deleted key from disk
+        flash_simple_erase_page(FLASH_STATUS_ADDR);
+        flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+
+        return -1;
+    }
+    print_debug("Timestamp inside subscription time\n");
 
 
     //is the timestamp >= next allowed
+    if (decrypted_frame.timestamp < next_time_allowed) {
+        print_error("Timestamp is less than next time allowed\n");
+        return -1;
+    }
+    print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
+    write_packet(DECODE_MSG, decrypted_frame->data, frame_size);
 
     //set next allowed timestamp to current frame's timestamp+1
-
-    // check that there's enough data to extract the channel and timestamp
-    // otherwise frame_size can underflow and lead to a huge number
-    if (pkt_len <= (sizeof(new_frame->channel) + sizeof(new_frame->timestamp))) {
-        print_error("Packet length of DECODE frame is too small\n");
-        return -1;
-    }
-    
-    // Frame size is the size of the packet minus the size of non-frame elements
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
-    channel = new_frame->channel;
-
-    // The reference design doesn't use the timestamp, but you may want to in your design
-    // timestamp_t timestamp = new_frame->timestamp;
-
-    // Check that we are subscribed to the channel...
-    print_debug("Checking subscription\n");
-    if (is_subscribed(channel)) {
-        print_debug("Subscription Valid\n");
-        /* The reference design doesn't need any extra work to decode, but your design likely will.
-        *  Do any extra decoding here before returning the result to the host. */
-        write_packet(DECODE_MSG, new_frame->data, frame_size);
-        return 0;
-    } else {
-        STATUS_LED_RED();
-        sprintf(
-            output_buf,
-            "Receiving unsubscribed channel data.  %u\n", channel);
-        print_error(output_buf);
-        return -1;
-    }
+    next_time_allowed = decrypted_frame.timestamp + 1;
 }
 
 /** @brief Initializes peripherals for system boot.
