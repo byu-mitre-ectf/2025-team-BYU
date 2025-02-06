@@ -19,7 +19,14 @@
 #include "nvic_table.h"
 #include "host_messaging.h"
 #include "board.h"
+// the correct version of the file below has the line: #include "max78002.h" (or if our board is different whatever that is)
 #include "mxc_device.h"
+
+/*
+Definition for MXC_UART_GET_UART is found in https://analogdevicesinc.github.io/msdk/Libraries/PeriphDrivers/Documentation/MAX78000/max78000_8h_source.html
+#define MXC_UART_GET_UART(i) \
+    ((i) == 0 ? MXC_UART0 : (i) == 1 ? MXC_UART1 : (i) == 2 ? MXC_UART2 : (i) == 3 ? MXC_UART3 : 0)
+*/
 
 
 /** @brief Initializes the UART Interrupt handler.
@@ -37,6 +44,14 @@ int uart_init(void){
 
     return E_NO_ERROR;
 }
+
+/* 
+Note: the only difference between MXC_UART_ReadCharacterRaw and MXC_UART_ReadCharacter is that
+    raw will return an error if there is no character and ReadCharacter will just wait (?)
+    not sure behavior of ReadCharacter it just doesn't say that it errors on no byte
+    MXC_UART_ReadCharacterRaw: https://analogdevicesinc.github.io/msdk/Libraries/PeriphDrivers/Documentation/MAX78000/group__uart.html#ga5128672adc1a7880f77da128753ead73
+    MXC_UART_ReadCharacter: https://analogdevicesinc.github.io/msdk/Libraries/PeriphDrivers/Documentation/MAX78000/group__uart.html#ga6ab7c853437b7e94c10b116affd99663
+*/
 
 /** @brief Reads a byte from UART and reports an error if the read fails.
  * 
