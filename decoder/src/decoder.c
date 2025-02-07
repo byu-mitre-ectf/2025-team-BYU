@@ -23,20 +23,14 @@
 #include "host_messaging.h"
 #include "simple_uart.h"
 
+#include "user_settings.h"
 #include "adv_crypto.h"
+#include <stdlib.h>
 #include "secrets.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
 *  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-/* The simple crypto example included with the reference design is intended
-*  to be an example of how you *may* use cryptography in your design. You
-*  are not limited nor required to use this interface in your design. It is
-*  recommended for newer teams to start by only using the simple crypto
-*  library until they have a working design. */
-#include "simple_crypto.h"
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -247,23 +241,6 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     return 0;
 }
 
-/** @brief Decrypts a tv frame packet
- * 
- *  @param pkt_len The length of the incoming packet.
- *  @param enc_frame A pointer to the encrypted tv frame
- *  @param new_frame A pointer to the packet to decrypt into
- * 
- *  @return 0 if successful. -1 on error.
- */
-int decrypt_frame(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame, frame_packet_t *new_frame) {
-        //return -1 on error
-        return -1;
-    } else {
-        return 1;
-    }
-
-}
-
 /** @brief Processes a packet containing frame data.
  *
  *  @param pkt_len A pointer to the incoming packet.
@@ -303,31 +280,31 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     //hash compare
 
     //wait random amount of time between 1 and 30 milliseconds
-    //sleep
+    
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame))
-    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->authTag,\
-     &enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE,\
-     &decoder_status.subscribed_channels[enc_packet->channel].key, &enc_frame->nonce,\
-     &decrypted_frame->data)) {
+    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
+    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->auth_tag,\
+     (uint8_t *)&enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE,\
+     (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
+     (uint8_t *)&decrypted_frame.data)) {
         print_error("Decryption failed\n");
         return -1;
     } 
     print_debug("Decryption succeeded\n");
 
     //is the timestamp within decoder's subscription period
-    if (decrypted_frame->timestamp < decoder_status.subscribed_channels[decrypted_frame->channel].start_timestamp ||\
-     decrypted_frame->timestamp > decoder_status.subscribed_channels[decrypted_frame->channel].end_timestamp) {
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp ||\
+     decrypted_frame.timestamp > decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp) {
         print_error("Timestamp outside of subscription time\n");
 
         // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[decrypted_frame->channel].key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[decrypted_frame->channel].active = false;
-        decoder_status.subscribed_channels[decrypted_frame->channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        decoder_status.subscribed_channels[decrypted_frame->channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        memset(decoder_status.subscribed_channels[decrypted_frame.channel].key, 0, CHACHAPOLY_KEY_SIZE);
+        decoder_status.subscribed_channels[decrypted_frame.channel].active = false;
+        decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
 
         // write deleted key from disk
         flash_simple_erase_page(FLASH_STATUS_ADDR);
@@ -346,10 +323,12 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
-    write_packet(DECODE_MSG, decrypted_frame->data, frame_size);
+    write_packet(DECODE_MSG, decrypted_frame.data, frame_size);
 
     //set next allowed timestamp to current frame's timestamp+1
     next_time_allowed = decrypted_frame.timestamp + 1;
+
+    return 0;
 }
 
 /** @brief Initializes peripherals for system boot.
@@ -396,45 +375,6 @@ void init() {
     }
 }
 
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
-
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif  //CRYPTO_EXAMPLE
-
 /**********************************************************
  *********************** MAIN LOOP ************************
  **********************************************************/
@@ -473,20 +413,13 @@ int main(void) {
         case LIST_MSG:
             STATUS_LED_CYAN();
 
-            #ifdef CRYPTO_EXAMPLE
-                // Run the crypto example
-                // TODO: Remove this from your design
-                crypto_example();
-            #endif // CRYPTO_EXAMPLE
             list_channels();
             break;
 
         // Handle decode command
         case DECODE_MSG:
             STATUS_LED_PURPLE();
-            frame_packet_t frame_packet;
-            decrypt_frame(pkt_len, (encrypted_frame_packet_t *)uart_buf, &frame_packet);
-            decode(pkt_len, &frame_packet);
+            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command
