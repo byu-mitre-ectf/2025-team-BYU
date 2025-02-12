@@ -131,6 +131,30 @@ timestamp_t next_time_allowed = 0;
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
+ 
+/** @brief Generate random sleep delay
+ * 
+ *  No params, void
+*/
+void randomSleep() {
+    uint32_t* trand_base = 0x4004_D000; // I think
+    uint32_t ctrl = (0x0 >> 2);
+    uint32_t status = (0x04 >> 2);
+    uint32_t data = (0x08 >> 2);
+
+    *(trand_base + ctrl) = 0x01 << 15; // keywipe
+    *(trand_base + ctrl) = 0x01 << 3;  // keygen
+    while (*(trand_base + status) == 0) { // Loop for wait
+        ;
+    }
+    uint32_t random_num = *(trand_base + data);
+    random_num &= 0x1F;
+    sleep(random_num);
+
+    return;
+
+}
+
 
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
