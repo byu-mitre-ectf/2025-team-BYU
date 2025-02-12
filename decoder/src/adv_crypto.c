@@ -30,7 +30,8 @@
  *
  * @return 0 on success, -1 on bad length, other non-zero for other error
  */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertext) {
+int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag) {
+//int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertext) {
     Aes ctx; // Context for encryption
     int result; // Library result
 
@@ -66,7 +67,8 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
  *
  * @return 0 on success, -1 on bad length, other non-zero for other error
  */
-int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
+int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t* authTag, uint8_t* aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext) {
+//int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
     Aes ctx; // Context for decryption
     int result; // Library result
 
@@ -98,8 +100,10 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintex
  *
  * @return 0 on success, non-zero for other error
  */
-int hash(void *data, size_t len, uint8_t *hash_out) {
+int digest(void *data, size_t len, uint8_t* key, uint8_t *mac) {
+//int hash(void *data, size_t len, uint8_t *hash_out) {
     // Pass values to hash
-    return wc_Md5Hash((uint8_t *)data, len, hash_out);
+    //return wc_Md5Hash((uint8_t *)data, len, hash_out);
+    return 0;
 }
 

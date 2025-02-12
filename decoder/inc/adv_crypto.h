@@ -43,7 +43,7 @@
  *
  * @return 0 on success, other non-zero for other error
  */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, size_t aad_len, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag);
+int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag);
 
 /** @brief Decrypts ciphertext using the ChaCha20-Poly1305 cipher
  *
@@ -64,7 +64,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, size_t aad_len, ui
  *
  * @return 0 on success, non-zero for other error
  */
-int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t* authTag, uint8_t* aad, size_t aad_len, uint8_t *key, uint8_t *iv, uint8_t *plaintext);
+int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t* authTag, uint8_t* aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext);
 
 /** @brief Decrypts a ciphertext using RSA
  * 

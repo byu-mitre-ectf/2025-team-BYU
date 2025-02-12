@@ -249,9 +249,7 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
-    char output_buf[128] = {0};
-    uint16_t frame_size;
-    channel_id_t channel;
+    uint16_t frame_size = FRAME_SIZE;
     frame_packet_t decrypted_frame;
 
     // check that there's enough data to extract the channel and timestamp
@@ -276,18 +274,15 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     }
     print_debug("Decoder is subscribed to channel\n");
 
-    //is encrypted format valid (validate tag)
-    //hash compare
-
-    //wait random amount of time between 1 and 30 milliseconds
+    //TODO: wait random amount of time between 1 and 30 milliseconds
     
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
-    if (decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, &enc_frame->auth_tag,\
-     (uint8_t *)&enc_frame->channel, sizeof(enc_frame->channel)+CHACHAPOLY_IV_SIZE,\
+    if (!decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, enc_frame->auth_tag,\
+     (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
      (uint8_t *)&decrypted_frame.data)) {
         print_error("Decryption failed\n");
