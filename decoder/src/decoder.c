@@ -114,7 +114,6 @@ typedef struct {
  **********************************************************/
 
 typedef struct {
-    //Maybe we need a channel key and channel valid update.
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
