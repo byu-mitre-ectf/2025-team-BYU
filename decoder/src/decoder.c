@@ -58,6 +58,7 @@
 #define SUBSCRIPTION_ENCRYPTED_PACKET 56
 #define POLY_AUTH_TAG 16
 #define CHANNEL_KEY_SIZE 256
+#define MAXIMUM_MILISECOND_DELAY 25
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
@@ -191,10 +192,7 @@ int list_channels() {
 
 /** @brief Updates the channel subscription for a subset of channels.
  *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
+ *  @param encrypted_data_t An RSA encrypted packet that contains a poly1305 authTag and the encrypted subscription_update_packet_t data.
  *
  *  @note Take care to note that this system is little endian.
  *
@@ -203,22 +201,24 @@ int list_channels() {
 
 //We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
 int update_subscription(encrypted_data_t *encryptedData) {
-    //Another possible way would be allocating a seperate section of memory
-    /*
-    
-    //Can either use rand() or the onboard random number generator chip??
+    //Implemented using rand() not sure about the onboard random number generator.
     int randomDelay() {
-        int milli_seconds = rand() % 100;
+        int milli_seconds = rand() % MAXIMUM_MILISECOND_DELAY;
 
         // Storing start time
         clock_t start_time = clock();
-
+        
         // looping till required time is not achieved
         while (clock() < start_time + milli_seconds);
     }
 
+    uint8_t calculated_tag[POLY_AUTH_TAG];
+    
     random_delay();
-    if (encryptedData->authTag != poly1305Hash(encryptedData->cipherText)) {
+    // NEED TO CHANGE TO THE ACTUAL poly1305 HASH FUNCTION
+    hash(encryptedData->cipherText, sizeof(calculated_tag), calculated_tag);
+    random_delay();
+    if (encryptedData->authTag != calculated_tag) {
         return -1;
     }
     random_delay();
@@ -226,37 +226,41 @@ int update_subscription(encrypted_data_t *encryptedData) {
     subscription_update_packet_t update;
     
     random_delay();
-    rsaDecrypt(encryptedData->cipherText, rsaKey, update);
+    // NEED TO CHANGE TO THE ACTUAL CRYPTO FUNCTIONS.
+    decrypt_sym(encryptedData->cipherText, sizeof(update), rsaKey, update);
     random_delay();
-    
+
+    // Check that all objects in the subscription_update_packet_t are the appropriate size.
     if(sizeof(update) != sizeof(encrypted_data_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->end_timestamp) != sizeof(uint64_t) || sizeof(update->channel_key) != sizeof(CHANNEL_KEY_SIZE)) {
         return -1;
     }
 
-    if(update->decoder_id != CHANGETHISdecoderId) {
+    // NEED TO CHANGE TO THE ACTUAL SAVED DECODER ID.
+    if(update->decoder_id != decoderId) {
         return -1;
     }
     
-    //Checks that channel is valid.
-    if (update->channel <=  || update->channel > 8) {
+    // Checks that channel is a non-emergency valid channel.
+    if (update->channel < 1 || update->channel > 8) {
         return -1;
     }
 
-    //Writes the channel subscription to RAM.
+    // Writes the channel subscription to RAM.
     decoder_status.subscribed_channels[update->channel].active = true;
     decoder_status.subscribed_channels[update->channel].id = update->channel;
     decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
     decoder_status.subscribed_channels[update->channel].end_timestamp = update->end_timestamp;
     decoder_status.subscribed_channels[update->channel].channel_key = update->channel_key;
 
-    */
-
-    //Writes the channel subscription to flash.
+    // Writes the channel subscription to flash.
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
+    // Clears update memory locations
+    memset(update, '0', sizeof(update)*sizeof(uint8_t));
+        
     return 0;
 }
 
