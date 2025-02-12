@@ -157,7 +157,23 @@ int is_subscribed(channel_id_t channel) {
  **********************************************************/
 
 /** @brief Lists out the actively subscribed channels over UART.
- *
+ * 
+ *  @note We can switch to parallel arrays, I think that'd be 
+ *  more error prone and add needless techinical complexity.
+ *  -> but maybe there's a good reason to do that?
+ *  @note MAX_CHANNEL_COUNT is set to 8. If we want to consider
+ *  channel 0 to be a channel generally, we should probably make
+ *  the choice to redefine the MAX_CHANNEL_COUNT to 9
+ *  @note I don't know what we want the output to look like...
+ *  are we just printing 8, 7, 6, 5, 4, 3, 2, 1, 
+ *  or are we printing
+ *      8 : { start: 015, end: 125, active: true }
+ *      ~7 : { start: 015, end: 25, active: false }~ // don't print cause inactive
+ *      6 : { start: 017, end: 101, active: true }
+ *      5 : { start: 088, end: 188, active: true }
+ *      ...
+ *      0 : { start: 000, end: 999, active: true }
+ * 
  *  @return 0 if successful.
 */
 int list_channels() {
