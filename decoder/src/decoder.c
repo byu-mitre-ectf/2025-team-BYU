@@ -137,22 +137,33 @@ timestamp_t next_time_allowed = 0;
  *  No params, void
 */
 void randomSleep() {
-    uint32_t* trand_base = 0x4004_D000; // I think
-    uint32_t ctrl = (0x0 >> 2);
+    uint32_t* trand_base = 0x4004D000; // I think this should effectly access TRNG from MAX78000 user guide pdf
+    uint32_t ctrl = (0x0 >> 2); // Right shift two because 32 bit data type
     uint32_t status = (0x04 >> 2);
     uint32_t data = (0x08 >> 2);
 
+    uint32_t* real_time_clock = 0x40006000; // Base addr from user guide
+    uint32_t* subsecond_ctr_offset = (0x04 >> 2); // Right shift two for 32 bit data type
+
     *(trand_base + ctrl) = 0x01 << 15; // keywipe
     *(trand_base + ctrl) = 0x01 << 3;  // keygen
-    while (*(trand_base + status) == 0) { // Loop for wait
+    while (*(trand_base + status) == 0) { // Loop for rng gen 
         ;
     }
-    uint32_t random_num = *(trand_base + data);
-    random_num &= 0x1F;
-    sleep(random_num);
+    
+    uint32_t random_num = *(trand_base + data); // Random num value
+    random_num &= 0x7F; // Get 7 bits because clock period is .25 ms
+    uint32_t base_clk = *(real_time_clock + subsecond_ctr_offset); // Starting clock value
+
+    while (1) { // Loop for random wait
+        if (*(real_time_clock + subsecond_ctr_offset) > (base_clk + rand_num) // Delay check
+          || *(real_time_clock + subsecond_ctr_offset) < base_clk // Rollover check
+          || *(real_time_clock) == 0) { // Rollover double check
+            break;
+        }
+    }
 
     return;
-
 }
 
 
