@@ -21,8 +21,10 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
-
 #include "simple_uart.h"
+
+#include "adv_crypto.h"
+#include "secrets.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -82,6 +84,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
+    uint8_t key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
@@ -101,11 +104,13 @@ typedef struct {
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
 
+
 typedef struct {
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
+    uint8_t key[CHACHAPOLY_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -120,6 +125,8 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
+// Next timestamp allowed
+timestamp_t next_time_allowed = 0;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -219,12 +226,15 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         return -1;
     }
 
+    //add decryption stuff here
+
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
         print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
         return -1;
     }
 
+    // TODO: Change this to only update a specified channel instead of the first one
     // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
@@ -319,6 +329,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
+            memset(&subscription[i].key, 0, sizeof(subscription[i].key));
         }
 
         // Write the starting channel subscriptions into flash.
