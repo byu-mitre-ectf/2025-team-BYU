@@ -1,27 +1,22 @@
 /**
- * @file "simple_crypto.h"
- * @author Ben Janis
- * @brief Simplified Crypto API Header 
+ * @file "adv_crypto.h"
+ * @author Macen Bird
+ * @brief Advanced Crypto API Header 
  * @date 2025
- *
- * This source file is part of an example system for MITRE's 2025 Embedded System CTF (eCTF).
- * This code is being provided only for educational purposes for the 2025 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
- *
- * @copyright Copyright (c) 2025 The MITRE Corporation
+ * 
  */
 
-#if CRYPTO_ADV
-#ifndef ECTF_CRYPTO_H
-#define ECTF_CRYPTO_H
+#ifndef ECTF_ADV_CRYPTO_H
+#define ECTF_ADV_CRYPTO_H
 
+#include "wolfssl/wolfcrypt/aes.h"
 #include "wolfssl/wolfcrypt/chacha20_poly1305.h"
 #include "wolfssl/wolfcrypt/rsa.h"
 #include "wolfssl/wolfcrypt/poly1305.h"
 // #include "wolfssl/wolfcrypt/hash.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
-// #define BLOCK_SIZE AES_BLOCK_SIZE
+#define BLOCK_SIZE AES_BLOCK_SIZE
 #define CHACHAPOLY_KEY_SIZE CHACHA20_POLY1305_AEAD_KEYSIZE
 #define CHACHAPOLY_IV_SIZE CHACHA20_POLY1305_AEAD_IV_SIZE
 #define AUTHTAG_SIZE CHACHA20_POLY1305_AEAD_AUTHTAG_SIZE
@@ -48,7 +43,7 @@
  *
  * @return 0 on success, other non-zero for other error
  */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, size_t aad_len, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag);
+int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag);
 
 /** @brief Decrypts ciphertext using the ChaCha20-Poly1305 cipher
  *
@@ -69,7 +64,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t* aad, size_t aad_len, ui
  *
  * @return 0 on success, non-zero for other error
  */
-int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t* authTag, uint8_t* aad, size_t aad_len, uint8_t *key, uint8_t *iv, uint8_t *plaintext);
+int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext);
 
 /** @brief Decrypts a ciphertext using RSA
  * 
@@ -93,7 +88,6 @@ int decrypt_asym(uint8_t *ciphertext, void *keyData, uint8_t *plaintext);
  *
  * @return 0 on success, non-zero for other error
  */
-int digest(void *data, size_t len, uint8_t* key, uint8_t *mac);
+int digest(void *data, size_t len, uint8_t *key, uint8_t *mac);
 
-#endif // CRYPTO_ADV
-#endif // ECTF_CRYPTO_H
+#endif // ECTF_ADV_CRYPTO_H
