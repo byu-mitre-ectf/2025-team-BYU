@@ -45,7 +45,7 @@
  *********************** CONSTANTS ************************
  **********************************************************/
 
-#define MAX_CHANNEL_COUNT 8
+#define MAX_CHANNEL_COUNT 9
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define ENC_FRAME_SIZE (FRAME_SIZE+sizeof(timestamp_t))
@@ -135,6 +135,41 @@ timestamp_t next_time_allowed = 0;
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
+ 
+/** @brief Generate random sleep delay
+ * 
+ *  No params, void
+*/
+void randomSleep() {
+    uint32_t* trand_base = 0x4004D000; // I think this should effectly access TRNG from MAX78000 user guide pdf
+    uint32_t ctrl = (0x0 >> 2); // Right shift two because 32 bit data type
+    uint32_t status = (0x04 >> 2);
+    uint32_t data = (0x08 >> 2);
+
+    uint32_t* real_time_clock = 0x40006000; // Base addr from user guide
+    uint32_t* subsecond_ctr_offset = (0x04 >> 2); // Right shift two for 32 bit data type
+
+    *(trand_base + ctrl) = 0x01 << 15; // keywipe
+    *(trand_base + ctrl) = 0x01 << 3;  // keygen
+    while (*(trand_base + status) == 0) { // Loop for rng gen 
+        ;
+    }
+    
+    uint32_t random_num = *(trand_base + data); // Random num value
+    random_num &= 0x7F; // Get 7 bits because clock period is .25 ms
+    uint32_t base_clk = *(real_time_clock + subsecond_ctr_offset); // Starting clock value
+
+    while (1) { // Loop for random wait
+        if (*(real_time_clock + subsecond_ctr_offset) > (base_clk + rand_num) // Delay check
+          || *(real_time_clock + subsecond_ctr_offset) < base_clk // Rollover check
+          || *(real_time_clock) == 0) { // Rollover double check
+            break;
+        }
+    }
+
+    return;
+}
+
 
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
@@ -161,17 +196,35 @@ int is_subscribed(channel_id_t channel) {
  **********************************************************/
 
 /** @brief Lists out the actively subscribed channels over UART.
- *
+ * 
  *  @return 0 if successful.
 */
 int list_channels() {
     list_response_t resp;
-    pkt_len_t len;
+    pkt_len_t len = 0;
 
     resp.n_channels = 0;
 
+    // delete any lingering data
+    for (uint16_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
+        resp.channel_info[i].channel = 0;
+        resp.channel_info[i].start = 0;
+        resp.channel_info[i].end = 0;
+    }
+
     for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].active) {
+            if (resp.n_channels >= MAX_CHANNEL_COUNT) {
+                // too many channels
+                // TODO: Make this a defined value
+                return 1;
+            }
+            if (resp.channel_info[i].channel != 0 ||
+                resp.channel_info[i].start != 0 ||
+                resp.channel_info[i].end != 0) {
+                    // data in chanel_info array corrupted
+                    return 2;
+            }
             resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
             resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
             resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
@@ -181,6 +234,13 @@ int list_channels() {
 
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
 
+    // Num_channels (32 bit) + array of channel_id (32 bit), start (64 bit), end (64 bit) : n * (160 bit)
+    uint16_t expectedLen = 4 + resp.n_channels * (20);
+    if (len !=  expectedLen) {
+	printf("len was %d, expected %d\n", len, expectedLen);
+        // packet wrong size 
+        return 3;
+    }
     // Success message
     write_packet(LIST_MSG, &resp, len);
     return 0;
