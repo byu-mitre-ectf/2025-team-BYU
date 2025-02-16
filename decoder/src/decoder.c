@@ -312,9 +312,11 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     uint16_t frame_size = FRAME_SIZE;
     frame_packet_t decrypted_frame;
 
-    // check that there's enough data to extract the channel and timestamp
-    // otherwise frame_size can underflow and lead to a huge number
-    if (pkt_len <= sizeof(encrypted_frame_packet_t)) {
+    int16_t encrypted_size = pkt_len - sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE;
+
+    // checking to see if there is at least some data to decrypt
+    // timestamp is 8 bytes, frame must be at least one byte to be valid
+    if (encrypted_size < sizeof(timestamp_t)+1) { 
         print_error("Packet length of DECODE frame is too small\n");
         return -1;
     }
@@ -341,7 +343,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
-    if (!decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, enc_frame->auth_tag,\
+    if (!decrypt_sym(enc_frame->encrypted_data, (pkt_len-, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
      (uint8_t *)&decrypted_frame.data)) {
@@ -378,7 +380,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
-    write_packet(DECODE_MSG, decrypted_frame.data, frame_size);
+    write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
 
     //set next allowed timestamp to current frame's timestamp+1
     next_time_allowed = decrypted_frame.timestamp + 1;
