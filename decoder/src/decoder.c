@@ -340,7 +340,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
+    memcpy(&decrypted_frame, enc_frame, sizeof(decrypted_frame));
     if (!decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
