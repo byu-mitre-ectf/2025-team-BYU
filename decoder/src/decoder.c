@@ -337,13 +337,14 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Decoder is subscribed to channel\n");
 
     //TODO: wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
     
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
-    if (!decrypt_sym(enc_frame->encrypted_data, (pkt_len-, enc_frame->auth_tag,\
+    if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
      (uint8_t *)&decrypted_frame.data)) {
@@ -380,6 +381,8 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
+    //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
+    //prevents type issues.
     write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
 
     //set next allowed timestamp to current frame's timestamp+1
