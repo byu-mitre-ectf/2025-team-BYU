@@ -15,9 +15,6 @@
 #ifndef ECTF_CRYPTO_H
 #define ECTF_CRYPTO_H
 
-#include "wolfssl/wolfcrypt/chacha20_poly1305.h"
-#include "wolfssl/wolfcrypt/rsa.h"
-#include "wolfssl/wolfcrypt/poly1305.h"
 // #include "wolfssl/wolfcrypt/hash.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
@@ -80,7 +77,7 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad,
  * 
  * @return 0 on success, non-zero for other error
  */
-int decrypt_asym(uint8_t *ciphertext, void *keyData, uint8_t *plaintext);
+int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t keyLen, uint8_t *plaintext, size_t ptSize);
 
 /** @brief Hashes arbitrary-length data with the Poly1305 cipher to verify integrity
  *
@@ -92,7 +89,7 @@ int decrypt_asym(uint8_t *ciphertext, void *keyData, uint8_t *plaintext);
  *
  * @return 0 on success, non-zero for other error
  */
-int digest(void *data, size_t len, uint8_t *key, uint8_t *mac);
+int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac);
 
 #endif // CRYPTO_ADV
 #endif // ECTF_CRYPTO_H
