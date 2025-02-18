@@ -14,9 +14,6 @@
 #if CRYPTO_ADV
 
 #include "adv_crypto.h"
-#include "wolfssl/wolfcrypt/chacha20_poly1305.h"
-#include "wolfssl/wolfcrypt/rsa.h"
-#include "wolfssl/wolfcrypt/poly1305.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -148,4 +145,6 @@ int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac) {
     }
     return SUCCESS;
 }
+
+#endif // ADV_CRYPTO
 

@@ -9,11 +9,9 @@
 #ifndef ECTF_ADV_CRYPTO_H
 #define ECTF_ADV_CRYPTO_H
 
-#include "wolfssl/wolfcrypt/aes.h"
 #include "wolfssl/wolfcrypt/chacha20_poly1305.h"
 #include "wolfssl/wolfcrypt/rsa.h"
 #include "wolfssl/wolfcrypt/poly1305.h"
-// #include "wolfssl/wolfcrypt/hash.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
 #define BLOCK_SIZE AES_BLOCK_SIZE
