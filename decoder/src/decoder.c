@@ -58,6 +58,16 @@
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
+///////////////////////Hardware Constants///////////////////
+#define TRAND_BASE_ADDR (0x4004D000)
+#define TRAND_CTRL_OFFSET (0x00 >> 2)
+#define TRAND_STATUS_OFFSET (0x04 >> 2)
+#define TRAND_DATA_OFFSET (0x08 >> 2)
+#define REAL_TIME_CLOCK_ADDR (0x40006000)
+#define SUBSEC_CTR_OFFSET (0x04 >> 2)
+#define RTC_KEYWIPE_BIT (0x01 << 15)
+#define RTC_KEYGEN_BIT (0x01 << 3)
+
 /**********************************************************
  ********************* STATE MACROS ***********************
  **********************************************************/
@@ -137,23 +147,22 @@ timestamp_t next_time_allowed = 0;
  *  No params, void
 */
 void randomSleep() {
-    uint32_t* trand_base = 0x4004D000; // I think this should effectly access TRNG from MAX78000 user guide pdf
-    uint32_t ctrl = (0x0 >> 2); // Right shift two because 32 bit data type
-    uint32_t status = (0x04 >> 2);
-    uint32_t data = (0x08 >> 2);
+    uint32_t* trand_base = TRAND_BASE_ADDR;
+    uint32_t ctrl = TRAND_CTRL_OFFSET; // Right shift two because 32 bit data type
 
-    uint32_t* real_time_clock = 0x40006000; // Base addr from user guide
-    uint32_t* subsecond_ctr_offset = (0x04 >> 2); // Right shift two for 32 bit data type
+    uint32_t* real_time_clock = REAL_TIME_CLOCK_ADDR // Base addr from user guide
 
-    *(trand_base + ctrl) = 0x01 << 15; // keywipe
-    *(trand_base + ctrl) = 0x01 << 3;  // keygen
-    while (*(trand_base + status) == 0) { // Loop for rng gen 
+    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYWIPE_BIT; // keywipe
+    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYGEN_BIT;  // keygen
+    while (*(trand_base + TRAND_STATUS_OFFSET) == 0) { // Loop for rng gen 
         ;
     }
     
-    uint32_t random_num = *(trand_base + data); // Random num value
-    random_num &= 0x7F; // Get 7 bits because clock period is .25 ms
-    uint32_t base_clk = *(real_time_clock + subsecond_ctr_offset); // Starting clock value
+    uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET); // Random num value
+    // Get 7 bits becaus clock period is .25 ms 
+    // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
+    random_num &= 0x7F;
+    uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
 
     while (1) { // Loop for random wait
         if (*(real_time_clock + subsecond_ctr_offset) > (base_clk + rand_num) // Delay check
@@ -208,7 +217,8 @@ int list_channels() {
         resp.channel_info[i].end = 0;
     }
 
-    for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
+    // Start at i = 1 because we don't print out channel 0
+    for (uint32_t i = 1; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].active) {
             if (resp.n_channels >= MAX_CHANNEL_COUNT) {
                 // too many channels
