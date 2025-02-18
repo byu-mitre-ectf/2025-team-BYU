@@ -14,7 +14,7 @@
 #if CRYPTO_ADV
 
 #include "adv_crypto.h"
-#include <stdint.h>
+
 #include <string.h>
 
 #define SUCCESS 0
