@@ -1,24 +1,22 @@
 /**
- * @file "simple_crypto.h"
- * @author Ben Janis
- * @brief Simplified Crypto API Header 
+ * @file "adv_crypto.h"
+ * @author Macen Bird
+ * @brief Advanced Crypto API Header 
  * @date 2025
- *
- * This source file is part of an example system for MITRE's 2025 Embedded System CTF (eCTF).
- * This code is being provided only for educational purposes for the 2025 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
- *
- * @copyright Copyright (c) 2025 The MITRE Corporation
+ * 
  */
 
-#if CRYPTO_ADV
-#ifndef ECTF_CRYPTO_H
-#define ECTF_CRYPTO_H
+#ifndef ECTF_ADV_CRYPTO_H
+#define ECTF_ADV_CRYPTO_H
 
+#include "wolfssl/wolfcrypt/aes.h"
+#include "wolfssl/wolfcrypt/chacha20_poly1305.h"
+#include "wolfssl/wolfcrypt/rsa.h"
+#include "wolfssl/wolfcrypt/poly1305.h"
 // #include "wolfssl/wolfcrypt/hash.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
-// #define BLOCK_SIZE AES_BLOCK_SIZE
+#define BLOCK_SIZE AES_BLOCK_SIZE
 #define CHACHAPOLY_KEY_SIZE CHACHA20_POLY1305_AEAD_KEYSIZE
 #define CHACHAPOLY_IV_SIZE CHACHA20_POLY1305_AEAD_IV_SIZE
 #define AUTHTAG_SIZE CHACHA20_POLY1305_AEAD_AUTHTAG_SIZE
@@ -84,6 +82,7 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
  * @param data A pointer to a buffer of length len containing the data
  *           to be hashed
  * @param len The length of the plaintext to hash
+ * @param key A pointer to a buffer of length POLY_KEY_SIZE (32 bytes) for use in computing the hash/digest
  * @param mac A pointer to a buffer of length POLY1305_DIGEST_SIZE (16 bytes) where the resulting
  *           hash output will be written to
  *
@@ -91,5 +90,4 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
  */
 int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac);
 
-#endif // CRYPTO_ADV
-#endif // ECTF_CRYPTO_H
+#endif // ECTF_ADV_CRYPTO_H

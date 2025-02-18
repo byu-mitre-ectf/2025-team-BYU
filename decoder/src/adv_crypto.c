@@ -149,4 +149,3 @@ int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac) {
     return SUCCESS;
 }
 
-#endif
