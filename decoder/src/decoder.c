@@ -80,18 +80,18 @@
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
 typedef struct {
-    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
 } encrypted_frame_packet_t;
 
 typedef struct {
-    uint8_t data[FRAME_SIZE];
-    timestamp_t timestamp;
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
+    timestamp_t timestamp;
+    uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
 typedef struct {
@@ -152,10 +152,9 @@ timestamp_t next_time_allowed = 0;
  *  No params, void
 */
 void randomSleep() {
-    uint32_t* trand_base = TRAND_BASE_ADDR;
-    uint32_t ctrl = TRAND_CTRL_OFFSET; // Right shift two because 32 bit data type
+    uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
 
-    uint32_t* real_time_clock = REAL_TIME_CLOCK_ADDR // Base addr from user guide
+    uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
 
     *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYWIPE_BIT; // keywipe
     *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYGEN_BIT;  // keygen
@@ -170,8 +169,8 @@ void randomSleep() {
     uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
 
     while (1) { // Loop for random wait
-        if (*(real_time_clock + subsecond_ctr_offset) > (base_clk + rand_num) // Delay check
-          || *(real_time_clock + subsecond_ctr_offset) < base_clk // Rollover check
+        if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
+          || *(real_time_clock + SUBSEC_CTR_OFFSET) < base_clk // Rollover check
           || *(real_time_clock) == 0) { // Rollover double check
             break;
         }
@@ -320,14 +319,23 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
-    uint16_t frame_size = FRAME_SIZE;
     frame_packet_t decrypted_frame;
 
-    // check that there's enough data to extract the channel and timestamp
-    // otherwise frame_size can underflow and lead to a huge number
-    if (pkt_len <= sizeof(encrypted_frame_packet_t)) {
+    //wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
+
+    int16_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
+
+    // checking to see if there is at least some data to decrypt
+    // timestamp is 8 bytes, frame must be at least one byte to be valid
+    if (encrypted_size < sizeof(timestamp_t)+1) { 
         print_error("Packet length of DECODE frame is too small\n");
         return -1;
+    }
+    if (encrypted_size > FRAME_SIZE + sizeof(timestamp_t)) {
+        print_error("Packet length of DECODE frame is too large\n");
+        return -1;
+
     }
     print_debug("Packet length okay\n");
 
@@ -345,17 +353,18 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     }
     print_debug("Decoder is subscribed to channel\n");
 
-    //TODO: wait random amount of time between 1 and 30 milliseconds
+    //wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
     
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    memcpy(&decrypted_frame, enc_frame, sizeof(decrypted_frame));
-    if (!decrypt_sym(enc_frame->encrypted_data, ENC_FRAME_SIZE, enc_frame->auth_tag,\
+    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
+    if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
-     (uint8_t *)&decrypted_frame.data)) {
+     (uint8_t *)&decrypted_frame.timestamp)) {
         print_error("Decryption failed\n");
         return -1;
     } 
@@ -389,7 +398,9 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
-    write_packet(DECODE_MSG, decrypted_frame.data, frame_size);
+    //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
+    //prevents type issues.
+    write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
 
     //set next allowed timestamp to current frame's timestamp+1
     next_time_allowed = decrypted_frame.timestamp + 1;
