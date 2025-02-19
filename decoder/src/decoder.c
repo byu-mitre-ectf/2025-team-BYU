@@ -21,9 +21,6 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
-//The library that does delay
-#inlcude <time.h>
-
 #include "simple_uart.h"
 
 /* Code between this #ifdef and the subsequent #endif will
@@ -197,36 +194,28 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
-
-//We actually need to pass this function an encrypted packet. Not sure how big the encrypted packet will be. Need to make a byte array of the encrypted packet.
 int update_subscription(encrypted_data_t *encryptedData) {
-    //Implemented using rand() not sure about the onboard random number generator.
-    int randomDelay() {
-        int milli_seconds = rand() % MAXIMUM_MILISECOND_DELAY;
-
-        // Storing start time
-        clock_t start_time = clock();
-        
-        // looping till required time is not achieved
-        while (clock() < start_time + milli_seconds);
-    }
-
+    // Sets the object to store the POLY 1305 hash
     uint8_t calculated_tag[POLY_AUTH_TAG];
-    
-    random_delay();
-    // NEED TO CHANGE TO THE ACTUAL poly1305 HASH FUNCTION
+
+    // Hashes the encrypted packet with random delays to secure the process.
+    randomSleep();
     hash(encryptedData->cipherText, sizeof(calculated_tag), calculated_tag);
-    random_delay();
+    randomSleep();
+    
+    //If the calculated hash and sent hash do not match the program terminates.
     if (encryptedData->authTag != calculated_tag) {
         return -1;
     }
-    random_delay();
-
-    subscription_update_packet_t update;
+    // Another random delay to increase security of the encryption process.
+    randomSleep();
     
-    random_delay();
-    // NEED TO CHANGE TO THE ACTUAL CRYPTO FUNCTIONS.
-    decrypt_sym(encryptedData->cipherText, sizeof(update), rsaKey, update);
+    // Sets the object to store the decrypted update packet.
+    subscription_update_packet_t update;
+
+    // Decrypts the encrypted update packet with random delays to secure the decryption process.
+    randomSleep();
+    decrypt_asym(encryptedData->cipherText, rsaKey, update);
     random_delay();
 
     // Check that all objects in the subscription_update_packet_t are the appropriate size.
@@ -259,7 +248,6 @@ int update_subscription(encrypted_data_t *encryptedData) {
 
     // Clears update memory locations
     memset(update, '0', sizeof(update)*sizeof(uint8_t));
-        
     return 0;
 }
 
