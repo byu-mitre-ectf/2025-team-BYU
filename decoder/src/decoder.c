@@ -80,18 +80,18 @@
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
 typedef struct {
-    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
 } encrypted_frame_packet_t;
 
 typedef struct {
-    uint8_t data[FRAME_SIZE];
     timestamp_t timestamp;
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
 typedef struct {
@@ -152,10 +152,9 @@ timestamp_t next_time_allowed = 0;
  *  No params, void
 */
 void randomSleep() {
-    uint32_t* trand_base = TRAND_BASE_ADDR;
-    uint32_t ctrl = TRAND_CTRL_OFFSET; // Right shift two because 32 bit data type
+    uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
 
-    uint32_t* real_time_clock = REAL_TIME_CLOCK_ADDR // Base addr from user guide
+    uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
 
     *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYWIPE_BIT; // keywipe
     *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYGEN_BIT;  // keygen
@@ -170,8 +169,8 @@ void randomSleep() {
     uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
 
     while (1) { // Loop for random wait
-        if (*(real_time_clock + subsecond_ctr_offset) > (base_clk + rand_num) // Delay check
-          || *(real_time_clock + subsecond_ctr_offset) < base_clk // Rollover check
+        if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
+          || *(real_time_clock + SUBSEC_CTR_OFFSET) < base_clk // Rollover check
           || *(real_time_clock) == 0) { // Rollover double check
             break;
         }
@@ -320,16 +319,23 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
-    uint16_t frame_size = FRAME_SIZE;
     frame_packet_t decrypted_frame;
 
-    int16_t encrypted_size = pkt_len - sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE;
+    //wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
+
+    int16_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
 
     // checking to see if there is at least some data to decrypt
     // timestamp is 8 bytes, frame must be at least one byte to be valid
     if (encrypted_size < sizeof(timestamp_t)+1) { 
         print_error("Packet length of DECODE frame is too small\n");
         return -1;
+    }
+    if (encrypted_size > FRAME_SIZE + sizeof(timestamp_t)) {
+        print_error("Packet length of DECODE frame is too large\n");
+        return -1;
+
     }
     print_debug("Packet length okay\n");
 
@@ -347,7 +353,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     }
     print_debug("Decoder is subscribed to channel\n");
 
-    //TODO: wait random amount of time between 1 and 30 milliseconds
+    //wait random amount of time between 1 and 30 milliseconds
     randomSleep();
     
 
