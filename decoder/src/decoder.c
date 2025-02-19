@@ -87,10 +87,10 @@ typedef struct {
 } encrypted_frame_packet_t;
 
 typedef struct {
-    timestamp_t timestamp;
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
+    timestamp_t timestamp;
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
