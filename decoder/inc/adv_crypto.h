@@ -88,6 +88,6 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
  *
  * @return 0 on success, non-zero for other error
  */
-int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac);
+int digest(void *data, size_t len, uint8_t *aad, size_t aadLen, uint8_t *key, uint8_t *mac);
 
 #endif // ECTF_ADV_CRYPTO_H

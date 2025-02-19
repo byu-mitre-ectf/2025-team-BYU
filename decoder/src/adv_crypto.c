@@ -134,12 +134,12 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
  *
  * @return 0 on success, non-zero for other error
  */
-int digest(void *data, size_t len, uint8_t *aad, uint8_t *key, uint8_t *mac) {
+int digest(void *data, size_t len, uint8_t *aad, size_t aadLen, uint8_t *key, uint8_t *mac) {
     // Pass values to hash
     Poly1305 ctx;
 
     wc_Poly1305SetKey(&ctx, key, sizeof(key));
-    if(wc_Poly1305_MAC(&ctx, aad, sizeof(aad), (uint8_t *)data, len, mac, POLY1305_DIGEST_SIZE) != 0)
+    if(wc_Poly1305_MAC(&ctx, aad, aadLen, (uint8_t *)data, len, mac, POLY1305_DIGEST_SIZE) != 0)
     {
         return 1;
     }
