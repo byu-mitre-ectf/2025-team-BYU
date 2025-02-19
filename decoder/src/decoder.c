@@ -200,10 +200,15 @@ int update_subscription(encrypted_data_t *encryptedData) {
 
     // Hashes the encrypted packet with random delays to secure the process.
     randomSleep();
-    hash(encryptedData->cipherText, sizeof(calculated_tag), calculated_tag);
+    int hashStatus = digest(encryptedData->cipherText, sizeof(encrypted_data_t), uint8_t *aad, subscription_verify_key, calculated_tag);
     randomSleep();
+
+    // Checks if the hash function was successful
+    if (hashStatus != 0) {
+        return -1;
+    }
     
-    //If the calculated hash and sent hash do not match the program terminates.
+    // If the calculated hash and sent hash do not match the program terminates.
     if (encryptedData->authTag != calculated_tag) {
         return -1;
     }
@@ -215,7 +220,7 @@ int update_subscription(encrypted_data_t *encryptedData) {
 
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
-    int decryptStatus = decrypt_asym(encryptedData->cipherText, sizeof(encrypted_data_t), rsaKey, sizeof(rsaKey), update, sizeof(encrypted_data_t));
+    int decryptStatus = decrypt_asym(encryptedData->cipherText, sizeof(encrypted_data_t), subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(encrypted_data_t));
     random_delay();
 
     // Checks that decrypt function was successful
@@ -229,7 +234,7 @@ int update_subscription(encrypted_data_t *encryptedData) {
     }
 
     // NEED TO CHANGE TO THE ACTUAL SAVED DECODER ID.
-    if(update->decoder_id != decoderId) {
+    if(update->decoder_id != DECODER_ID) {
         return -1;
     }
     
