@@ -52,10 +52,8 @@
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
-#define SUBSCRIPTION_ENCRYPTED_PACKET 280
+#define SUBSCRIPTION_ENCRYPTED_PACKET 256
 #define AUTH_DATA_SIZE 8
-#define POLY_AUTH_TAG 16
-#define CHANNEL_KEY_SIZE 256
 #define MAXIMUM_MILISECOND_DELAY 25
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
@@ -83,7 +81,7 @@ typedef struct {
 
 typedef struct {
     uint8_t additional_auth_data[AUTH_DATA_SIZE];
-    uint8_t auth_tag[POLY_AUTH_TAG];
+    uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[SUBSCRIPTION_ENCRYPTED_PACKET];
 } encrypted_update_packet_t
 
@@ -92,7 +90,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[CHANNEL_KEY_SIZE]
+    uint8_t channel_key[POLY_KEY_SIZE]
 } subscription_update_packet_t;
 
 typedef struct {
@@ -198,7 +196,7 @@ int list_channels() {
 */
 int update_subscription(encrypted_update_packet_t *encryptedData) {
     // Sets the object to store the POLY 1305 hash
-    uint8_t calculated_tag[POLY_AUTH_TAG];
+    uint8_t calculated_tag[AUTHTAG_SIZE];
 
     // Hashes the encrypted packet with random delays to secure the process.
     randomSleep();
@@ -259,7 +257,7 @@ int update_subscription(encrypted_update_packet_t *encryptedData) {
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
     // Clears update memory locations
-    memset(update, '0', sizeof(update)*sizeof(uint8_t));
+    memset(update, 'a', sizeof(update)*sizeof(uint8_t));
     return 0;
 }
 
