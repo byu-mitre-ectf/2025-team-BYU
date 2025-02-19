@@ -215,9 +215,14 @@ int update_subscription(encrypted_data_t *encryptedData) {
 
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
-    decrypt_asym(encryptedData->cipherText, rsaKey, update);
+    int decryptStatus = decrypt_asym(encryptedData->cipherText, sizeof(encrypted_data_t), rsaKey, sizeof(rsaKey), update, sizeof(encrypted_data_t));
     random_delay();
 
+    // Checks that decrypt function was successful
+    if (decryptStatus != 0) {
+        return -1;
+    }
+    
     // Check that all objects in the subscription_update_packet_t are the appropriate size.
     if(sizeof(update) != sizeof(encrypted_data_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->end_timestamp) != sizeof(uint64_t) || sizeof(update->channel_key) != sizeof(CHANNEL_KEY_SIZE)) {
         return -1;
