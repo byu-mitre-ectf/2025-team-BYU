@@ -364,7 +364,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
-     (uint8_t *)&decrypted_frame.data)) {
+     (uint8_t *)&decrypted_frame.timestamp)) {
         print_error("Decryption failed\n");
         return -1;
     } 
