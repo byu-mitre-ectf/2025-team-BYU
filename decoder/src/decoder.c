@@ -67,6 +67,7 @@
 #define SUBSEC_CTR_OFFSET (0x04 >> 2)
 #define RTC_KEYWIPE_BIT (0x01 << 15)
 #define RTC_KEYGEN_BIT (0x01 << 3)
+#define get_list_byte_size(a) (4 + (a * 20)) // 4 header bytes + 20 bytes per channel
 
 /**********************************************************
  ********************* STATE MACROS ***********************
@@ -241,7 +242,7 @@ int list_channels() {
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
 
     // Num_channels (32 bit) + array of channel_id (32 bit), start (64 bit), end (64 bit) : n * (160 bit)
-    uint16_t expectedLen = 4 + resp.n_channels * (20);
+    uint16_t expectedLen = get_list_byte_size(resp.n_channels);
     if (len !=  expectedLen) {
 	printf("len was %d, expected %d\n", len, expectedLen);
         // packet wrong size 
