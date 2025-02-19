@@ -115,7 +115,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t channel_key[CHANNEL_KEY_SIZE]
+    uint8_t channel_key[POLY_KEY_SIZE]
 } channel_status_t;
 
 typedef struct {
