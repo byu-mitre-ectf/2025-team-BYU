@@ -34,16 +34,17 @@ def generate_rsa_key_pair():
         logger.error(f"Error generating RSA key pair: {e}")
         return None
     
-def write_file(filepath: Path, content, args, mode: str):
+def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
     """Write content to a file.
 
     :param filepath: Path to the file
     :param content: Data to write
     :param args: Arguments inputed when the code is run
     :param mode: File open mode
+    :param backup_mode File open mode when args.force is false
     """
     try:
-        with open(filepath, mode if args.force else "xb") as file:
+        with open(filepath, mode if args.force else backup_mode) as file:
             file.write(content)
     except Exception as e:
             logger.error(f"Error creating and writing to {filepath} : {e}")
@@ -81,8 +82,8 @@ def gen_secrets(channels: list[int], args):
     private_key_filename = rsa_keys_directory / f"private_key.pem"
     public_key_filename = rsa_keys_directory / f"public_key.pem"
 
-    write_file(private_key_filename, private_key.export_key(), args, "wb")
-    write_file(public_key_filename, public_key, args, "wb")
+    write_file(private_key_filename, private_key.export_key(), args, "wb", "xb")
+    write_file(public_key_filename, public_key, args, "wb", "xb")
 
     rsa_private_hex = private_key.export_key(format="DER").hex()
     rsa_public_hex = public_key.hex()
@@ -111,7 +112,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{{" + chacha_zero_array + "}
     secrets_directory.mkdir(parents=True, exist_ok=True)
 
     header_file_path = "global.secrets/secrets.h"
-    write_file(header_file_path, header_file_content, args, "w")
+    write_file(header_file_path, header_file_content, args, "w", "x")
 
     poly_hex = poly1305_key.hex()
     chacha_hex = [key.hex() for key in chacha_keys]
@@ -126,7 +127,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{{" + chacha_zero_array + "}
 
     python_secrets_file = "global.secrets/secrets.json"
     json_content = json.dumps(secrets).encode()
-    write_file(python_secrets_file, json_content, args, "wb")
+    write_file(python_secrets_file, json_content, args, "wb", "xb")
 
 def parse_args():
     """Define and parse the command line arguments
