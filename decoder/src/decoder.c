@@ -391,11 +391,14 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     uint8_t *plaintext = (uint8_t *)malloc(encrypted_size);
-    if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
-     (uint8_t *)&enc_frame->channel, 
-     (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
-     plaintext)) {
-        print_error("Decryption failed\n");
+    int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
+        (uint8_t *)&enc_frame->channel, 
+        (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
+        plaintext);
+    if (dec_val != 0) {
+        char buffer[50];
+        snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
+        print_error(buffer);
         return -1;
     } 
     print_debug("Decryption succeeded\n");
