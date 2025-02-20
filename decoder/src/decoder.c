@@ -371,7 +371,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     //Is channel number an unsigned int >=0 and <=8?
     if (enc_frame->channel < 0 || enc_frame->channel > 8) {
-        print_error("Channel outside of valid range %d\n", enc_frame->channel);
+        print_error("Channel outside of valid range\n");
         return -1;
     }
     print_debug("Channel inside valid range\n");
