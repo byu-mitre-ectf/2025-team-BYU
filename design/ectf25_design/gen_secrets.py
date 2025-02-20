@@ -122,7 +122,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
 
     # Format secrets and write them to .json file
     secrets = {
-        "chacha_keys": chacha_hex,
+        "channel_keys": chacha_hex,
         "poly1305_key": poly_hex,
         "rsa_private_key": rsa_private_hex,
         "rsa_public_key": rsa_public_hex,
