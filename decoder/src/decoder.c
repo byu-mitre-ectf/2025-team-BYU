@@ -101,7 +101,7 @@ typedef struct {
     uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
-} encrypted_update_packet_t
+} encrypted_update_packet_t;
 
 typedef struct {
     decoder_id_t decoder_id;
@@ -369,7 +369,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Packet length okay\n");
 
     //Is channel number an unsigned int >=0 and <=8?
-    if (enc_frame->channel < 0 || enc_frame->channel > 8)) {
+    if (enc_frame->channel < 0 || enc_frame->channel > 8) {
         print_error("Channel outside of valid range\n");
         return -1;
     }
@@ -392,7 +392,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
     if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
-     (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
+     (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
      (uint8_t *)&decrypted_frame.timestamp)) {
         print_error("Decryption failed\n");
         return -1;
@@ -405,7 +405,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
         print_error("Timestamp outside of subscription time\n");
 
         // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[decrypted_frame.channel].key, 0, CHACHAPOLY_KEY_SIZE);
+        memset(decoder_status.subscribed_channels[decrypted_frame.channel].channel_key, 0, CHACHAPOLY_KEY_SIZE);
         decoder_status.subscribed_channels[decrypted_frame.channel].active = false;
         decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
         decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
@@ -462,7 +462,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
-            memset(&subscription[i].key, 0, sizeof(subscription[i].key));
+            memset(&subscription[i].channel_key, 0, sizeof(subscription[i].channel_key));
         }
 
         // Write the starting channel subscriptions into flash.
