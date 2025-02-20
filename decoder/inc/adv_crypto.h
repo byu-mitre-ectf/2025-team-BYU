@@ -22,6 +22,7 @@
 #define AUTHTAG_SIZE CHACHA20_POLY1305_AEAD_AUTHTAG_SIZE
 #define POLY_KEY_SIZE 32
 #define DIGEST_SIZE POLY1305_DIGEST_SIZE
+#define RSA_KEY_SIZE 256
 
 /******************************** FUNCTION PROTOTYPES ********************************/
 /** @brief Encrypts plaintext using the ChaCha20-Poly1305 cipher
