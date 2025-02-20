@@ -58,7 +58,7 @@ class Encoder:
             raise ValueError(f"No key found for channel {channel}!")
 
     # Gets the key for a specific channel, and converts the key from a string into bytes
-        key = self.channel_keys[str(channel)].encode()
+        key = bytes.fromhex(self.channel_keys[str(channel)])
         
         # Example for separate key files per channel. I'm pretty sure all the keys are in the same file but I need to ask.
         # with open(f"channel_{channel}_key.txt", "rb") as key_file:
