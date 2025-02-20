@@ -466,6 +466,12 @@ void init() {
             memset(&subscription[i].channel_key, 0, sizeof(subscription[i].channel_key));
         }
 
+        // set the channel 0 key in memory
+        subscription[0].start_timestamp = 0;
+        subscription[0].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        subscription[0].active = true;
+        memcpy(subscription[0].channel_key, channel_0_key, CHACHAPOLY_KEY_SIZE);
+
         // Write the starting channel subscriptions into flash.
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
 
