@@ -93,16 +93,16 @@ def gen_secrets(channels: list[int], args):
     poly_key_array = str(list(poly1305_key))[1:-1]
     chacha_zero_array = str(list(chacha_keys[0]))[1:-1]
 
-    header_file_content = """#define SECRETS_H
-#ifndef SECRETS_H
+    header_file_content = f"""#ifndef SECRETS_H
+#define SECRETS_H
 
 #include "adv_crypto.h"
 
-uint8_t subscription_decrypt_key[RSA_KEY_SIZE] = """ + "{{" + rsa_private_array + "}}" + """;
+uint8_t subscription_decrypt_key[{len(rsa_private_array)}] = """ + "{" + rsa_private_array + "}" + """;
 
-uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{{" + poly_key_array + "}}" + """;
+uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{" + poly_key_array + "}" + """;
 
-uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{{" + chacha_zero_array + "}}" + """;
+uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
 
 #endif // SECRETS_H
 """
