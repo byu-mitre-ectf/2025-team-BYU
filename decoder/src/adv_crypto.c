@@ -11,8 +11,6 @@
  * @copyright Copyright (c) 2025 The MITRE Corporation
  */
 
-#if CRYPTO_ADV
-
 #include "adv_crypto.h"
 
 #include <string.h>
@@ -145,6 +143,4 @@ int digest(void *data, size_t len, uint8_t *aad, size_t aadLen, uint8_t *key, ui
     }
     return SUCCESS;
 }
-
-#endif // ADV_CRYPTO
 
