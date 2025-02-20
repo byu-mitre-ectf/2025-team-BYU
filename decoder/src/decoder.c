@@ -256,7 +256,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
     // Clears update memory locations
-    memset(update, 'a', sizeof(update)*sizeof(uint8_t));
+    memset(update, 'A', sizeof(update)*sizeof(uint8_t));
     return 0;
 }
 
