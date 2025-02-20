@@ -327,7 +327,8 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     decoder_status.subscribed_channels[update.channel].id = update.channel;
     decoder_status.subscribed_channels[update.channel].start_timestamp = update.start_timestamp;
     decoder_status.subscribed_channels[update.channel].end_timestamp = update.end_timestamp;
-    decoder_status.subscribed_channels[update.channel].channel_key = update.channel_key;
+    // decoder_status.subscribed_channels[update.channel].channel_key = update.channel_key;
+    memcpy(decoder_status.subscribed_channels[update.channel].channel_key, update.channel_key, CHACHAPOLY_KEY_SIZE);
 
     // Writes the channel subscription to flash.
     flash_simple_erase_page(FLASH_STATUS_ADDR);
