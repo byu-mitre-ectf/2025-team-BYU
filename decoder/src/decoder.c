@@ -122,6 +122,7 @@ typedef struct {
     channel_info_t channel_info[MAX_CHANNEL_COUNT];
 } list_response_t;
 
+
 /**********************************************************
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
@@ -283,9 +284,8 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     }
     
     // Hashes the encrypted packet with random delays to secure the process.
-    randomSleep();
+    // randomSleep();
     int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
-    randomSleep();
 
     // Checks if the hash function was successful
     if (hashStatus != 0) {
@@ -297,15 +297,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
     // Another random delay to increase security of the encryption process.
-    randomSleep();
+    // randomSleep();
     
     // Sets the object to store the decrypted update packet.
     subscription_update_packet_t update;
   
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
-    randomSleep();
+    // randomSleep();
     int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
-    randomSleep();
 
     // Checks that decrypt function was successful
     if (decryptStatus != 0) {
@@ -385,34 +384,18 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     //wait random amount of time between 1 and 30 milliseconds
     // randomSleep();
-    
-    char buffer[100];
-    char temp_buffer[5];  // Temporary buffer for each byte as a hex string
-    char output_buffer[256]; // Buffer to store the final output string
-    int offset = 0;
-
-    // for (size_t i = 0; i < sizeof(frame_packet_t); i++) {
-    //     snprintf(temp_buffer, sizeof(temp_buffer), "%02X ", enc_frame[i]);
-    //     offset += snprintf(output_buffer + offset, sizeof(output_buffer) - offset, "%s", temp_buffer);
-    // }
-    // print_debug(output_buffer);
-    // Loop through the buffer and print each byte in hexadecimal
-    for (size_t i = 0; i < sizeof(frame_packet_t); i++) {
-        snprintf(temp_buffer, sizeof(temp_buffer), "%02X ", enc_frame->encrypted_data[i]);
-        offset += snprintf(output_buffer + offset, sizeof(output_buffer) - offset, "%s", temp_buffer);
-    }
-    print_debug(output_buffer);
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
     uint8_t *plaintext = malloc(sizeof(frame_packet_t));
-    memset(plaintext, 0, sizeof(frame_packet_t));
+    memset(plaintext, 'A', sizeof(frame_packet_t));
     int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
         (uint8_t *)&enc_frame->channel, \
         (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
         plaintext);
     if (dec_val != 0) {
+        char buffer[100];
         snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
         print_error(buffer);
         return -1;
