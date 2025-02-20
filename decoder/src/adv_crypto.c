@@ -11,8 +11,6 @@
  * @copyright Copyright (c) 2025 The MITRE Corporation
  */
 
-#if CRYPTO_ADV
-
 #include "adv_crypto.h"
 
 #include <string.h>
@@ -82,7 +80,7 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
     WC_RNG rng;
     RsaKey rsaKey;
     int32_t ret;
-    uint32_t idx = 0;
+    word32 idx = 0;
 
     // init rng : returns 0 on success
     ret = wc_InitRng(&rng);
@@ -145,6 +143,4 @@ int digest(void *data, size_t len, uint8_t *aad, size_t aadLen, uint8_t *key, ui
     }
     return SUCCESS;
 }
-
-#endif // ADV_CRYPTO
 

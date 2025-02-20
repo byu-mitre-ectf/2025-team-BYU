@@ -1,8 +1,8 @@
 import argparse
 import struct
 import json
-from Cryptodome.Cipher import ChaCha20_Poly1305
-from Cryptodome.Random import get_random_bytes
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.Random import get_random_bytes
 
 class Encoder:
     def __init__(self, secrets: bytes):
