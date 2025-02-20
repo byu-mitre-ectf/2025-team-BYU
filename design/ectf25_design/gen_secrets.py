@@ -119,6 +119,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
 
     poly_hex = poly1305_key.hex()
     chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
+    print(chacha_hex)
 
     # Format secrets and write them to .json file
     secrets = {
