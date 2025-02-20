@@ -352,7 +352,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
     //wait random amount of time between 1 and 30 milliseconds
-    randomSleep();
+    // randomSleep();
 
     int16_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
 
@@ -384,7 +384,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Decoder is subscribed to channel\n");
 
     //wait random amount of time between 1 and 30 milliseconds
-    randomSleep();
+    // randomSleep();
     
 
     // decrypt frame
