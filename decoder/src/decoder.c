@@ -304,7 +304,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
   
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
-    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t));
+    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
     random_delay();
 
     // Checks that decrypt function was successful
