@@ -305,7 +305,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
     int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
-    random_delay();
+    randomSleep();
 
     // Checks that decrypt function was successful
     if (decryptStatus != 0) {
@@ -313,21 +313,21 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     }
 
     // Checks if the decoder id is a valid decoder id.
-    if(update->decoder_id != DECODER_ID) {
+    if(update.decoder_id != DECODER_ID) {
         return -1;
     }
     
     // Checks that channel is a non-emergency valid channel.
-    if (update->channel < 1 || update->channel > 8) {
+    if (update.channel < 1 || update.channel > 8) {
         return -1;
     }
 
     // Writes the channel subscription to RAM.
-    decoder_status.subscribed_channels[update->channel].active = true;
-    decoder_status.subscribed_channels[update->channel].id = update->channel;
-    decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
-    decoder_status.subscribed_channels[update->channel].end_timestamp = update->end_timestamp;
-    decoder_status.subscribed_channels[update->channel].channel_key = update->channel_key;
+    decoder_status.subscribed_channels[update.channel].active = true;
+    decoder_status.subscribed_channels[update.channel].id = update.channel;
+    decoder_status.subscribed_channels[update.channel].start_timestamp = update.start_timestamp;
+    decoder_status.subscribed_channels[update.channel].end_timestamp = update.end_timestamp;
+    decoder_status.subscribed_channels[update.channel].channel_key = update.channel_key;
 
     // Writes the channel subscription to flash.
     flash_simple_erase_page(FLASH_STATUS_ADDR);
@@ -336,7 +336,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
     // Clears update memory locations
-    memset(update, 'A', sizeof(update)*sizeof(uint8_t));
+    memset(&update, 'A', sizeof(update)*sizeof(uint8_t));
     return 0;
 }
 
