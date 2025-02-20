@@ -96,8 +96,8 @@ def gen_secrets(channels: list[int], args):
     print(f"Chacha Key: {chacha_zero_array}")
     print(f"RSA Key: {rsa_private_array}")
 
-    header_file_content = """#define SECRETS_H
-#ifndef SECRETS_H
+    header_file_content = """#ifndef SECRETS_H
+#define SECRETS_H
 
 #include "adv_crypto.h"
 

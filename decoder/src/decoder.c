@@ -108,7 +108,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[POLY_KEY_SIZE]
+    uint8_t channel_key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
@@ -134,7 +134,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t channel_key[POLY_KEY_SIZE]
+    uint8_t channel_key[POLY_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -278,7 +278,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     // Sets the object to store the POLY 1305 hash
     uint8_t calculated_tag[AUTHTAG_SIZE];
 
-    if (ENCRYPTED_PACKET_SIZE != pkt_len)) {
+    if (ENCRYPTED_PACKET_SIZE != pkt_len) {
         return -1;
     }
     
@@ -304,7 +304,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
   
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
-    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t);
+    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
     random_delay();
 
     // Checks that decrypt function was successful
