@@ -72,7 +72,9 @@ class Encoder:
         cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
         cipher.update(struct.pack("<I", channel) + nonce)
         # Turns the packet into ciphertext, and also creates a tag associated with it (ty random chinese guy)
+        print(packet)
         ciphertext, tag = cipher.encrypt_and_digest(packet)
+        print(ciphertext)
 
         # Construct the final packet with the channel number, the nonce, the ciphertext, and the tag
         final_packet = struct.pack("<I", channel) + nonce + tag + ciphertext

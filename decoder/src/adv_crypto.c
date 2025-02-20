@@ -63,7 +63,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *aad, uint8_t *key, uint
 int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext) {
     // returns 0 on success else non-zero
     size_t aad_len = sizeof(uint32_t)+CHACHAPOLY_IV_SIZE;
-    return wc_ChaCha20Poly1305_Encrypt(key, iv, aad, aad_len, plaintext, len, ciphertext, authTag);
+    return wc_ChaCha20Poly1305_Decrypt(key, iv, aad, aad_len, ciphertext, len, authTag, plaintext);
 }
 
 /** @brief Decrypts a ciphertext using RSA

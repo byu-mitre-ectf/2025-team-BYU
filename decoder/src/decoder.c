@@ -89,21 +89,21 @@ typedef struct {
     uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
 } encrypted_frame_packet_t;
 
-typedef struct {
-    channel_id_t channel;
-    uint8_t nonce[CHACHAPOLY_IV_SIZE];
-    uint8_t auth_tag[AUTHTAG_SIZE];
+typedef struct __attribute__((packed)) {
+    // channel_id_t channel;
+    // uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    // uint8_t auth_tag[AUTHTAG_SIZE];
     timestamp_t timestamp;
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
@@ -111,13 +111,13 @@ typedef struct {
     uint8_t channel_key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     channel_id_t channel;
     timestamp_t start;
     timestamp_t end;
 } channel_info_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint32_t n_channels;
     channel_info_t channel_info[MAX_CHANNEL_COUNT];
 } list_response_t;
@@ -129,7 +129,7 @@ typedef struct {
  **********************************************************/
 
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
@@ -137,7 +137,7 @@ typedef struct {
     uint8_t channel_key[POLY_KEY_SIZE];
 } channel_status_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint32_t first_boot; // if set to FLASH_FIRST_BOOT, device has booted before.
     channel_status_t subscribed_channels[MAX_CHANNEL_COUNT];
 } flash_entry_t;
@@ -150,7 +150,7 @@ typedef struct {
 flash_entry_t decoder_status;
 
 // Next timestamp allowed
-timestamp_t next_time_allowed = 0;
+// timestamp_t next_time_allowed = 0;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -354,7 +354,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     //wait random amount of time between 1 and 30 milliseconds
     // randomSleep();
 
-    int16_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
+    pkt_len_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
 
     // checking to see if there is at least some data to decrypt
     // timestamp is 8 bytes, frame must be at least one byte to be valid
@@ -386,35 +386,56 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     //wait random amount of time between 1 and 30 milliseconds
     // randomSleep();
     
+    char buffer[100];
+    char temp_buffer[5];  // Temporary buffer for each byte as a hex string
+    char output_buffer[256]; // Buffer to store the final output string
+    int offset = 0;
+
+    // for (size_t i = 0; i < sizeof(frame_packet_t); i++) {
+    //     snprintf(temp_buffer, sizeof(temp_buffer), "%02X ", enc_frame[i]);
+    //     offset += snprintf(output_buffer + offset, sizeof(output_buffer) - offset, "%s", temp_buffer);
+    // }
+    // print_debug(output_buffer);
+    // Loop through the buffer and print each byte in hexadecimal
+    for (size_t i = 0; i < sizeof(frame_packet_t); i++) {
+        snprintf(temp_buffer, sizeof(temp_buffer), "%02X ", enc_frame->encrypted_data[i]);
+        offset += snprintf(output_buffer + offset, sizeof(output_buffer) - offset, "%s", temp_buffer);
+    }
+    print_debug(output_buffer);
 
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    uint8_t *plaintext = (uint8_t *)malloc(encrypted_size);
+    uint8_t plaintext[sizeof(frame_packet_t)];
+    memset(plaintext, 0, sizeof(plaintext));
     int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
         (uint8_t *)&enc_frame->channel, 
         (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
         plaintext);
     if (dec_val != 0) {
-        char buffer[50];
         snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
         print_error(buffer);
         return -1;
-    } 
+    }
+    snprintf(buffer, sizeof(buffer), "Return value: %d\n", dec_val);
+    print_debug(buffer);
     print_debug("Decryption succeeded\n");
-    memcpy(&decrypted_frame, &plaintext, sizeof(enc_frame));
-    free(plaintext);
+    memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
 
+    snprintf(buffer, sizeof(buffer), "Channel: %d\n", enc_frame->channel);
+    print_debug(buffer);
+    snprintf(buffer, sizeof(buffer), "Timestamp: %llu\n", decrypted_frame.timestamp);
+    print_debug(buffer);
     //is the timestamp within decoder's subscription period
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp ||\
-     decrypted_frame.timestamp > decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp) {
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||\
+     decrypted_frame.timestamp > decoder_status.subscribed_channels[enc_frame->channel].end_timestamp) {
         print_error("Timestamp outside of subscription time\n");
 
         // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[decrypted_frame.channel].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[decrypted_frame.channel].active = false;
-        decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        memset(decoder_status.subscribed_channels[enc_frame->channel].channel_key, 0, CHACHAPOLY_KEY_SIZE);
+        decoder_status.subscribed_channels[enc_frame->channel].active = false;
+        decoder_status.subscribed_channels[enc_frame->channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        decoder_status.subscribed_channels[enc_frame->channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
 
         // write deleted key from disk
         flash_simple_erase_page(FLASH_STATUS_ADDR);
@@ -426,11 +447,11 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
 
     //is the timestamp >= next allowed
-    if (decrypted_frame.timestamp < next_time_allowed) {
-        print_error("Timestamp is less than next time allowed\n");
-        return -1;
-    }
-    print_debug("Timestamp greater than or equal to next time allowed");
+    // if (decrypted_frame.timestamp < next_time_allowed) {
+    //     print_error("Timestamp is less than next time allowed\n");
+    //     return -1;
+    // }
+    // print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
     //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
@@ -438,7 +459,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
 
     //set next allowed timestamp to current frame's timestamp+1
-    next_time_allowed = decrypted_frame.timestamp + 1;
+    // next_time_allowed = decrypted_frame.timestamp + 1;
 
     return 0;
 }
