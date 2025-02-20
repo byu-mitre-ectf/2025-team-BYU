@@ -70,6 +70,7 @@ class Encoder:
 
         # Encrypt the packet using ChaCha20-Poly1305
         cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
+        cipher.update(struct.pack("<I", channel) + nonce)
         # Turns the packet into ciphertext, and also creates a tag associated with it (ty random chinese guy)
         ciphertext, tag = cipher.encrypt_and_digest(packet)
 

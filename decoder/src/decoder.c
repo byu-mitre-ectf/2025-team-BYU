@@ -390,15 +390,17 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
+    uint8_t *plaintext = (uint8_t *)malloc(encrypted_size);
     if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
      (uint8_t *)&enc_frame->channel, 
      (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
-     (uint8_t *)&decrypted_frame.timestamp)) {
+     plaintext)) {
         print_error("Decryption failed\n");
         return -1;
     } 
     print_debug("Decryption succeeded\n");
+    memcpy(&decrypted_frame, &plaintext, sizeof(enc_frame));
+    free(plaintext);
 
     //is the timestamp within decoder's subscription period
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp ||\
