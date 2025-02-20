@@ -23,17 +23,14 @@
 #include "host_messaging.h"
 #include "simple_uart.h"
 
+#include "user_settings.h"
+#include "adv_crypto.h"
+#include <stdlib.h>
+#include "secrets.h"
+
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
 *  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-/* The simple crypto example included with the reference design is intended
-*  to be an example of how you *may* use cryptography in your design. You
-*  are not limited nor required to use this interface in your design. It is
-*  recommended for newer teams to start by only using the simple crypto
-*  library until they have a working design. */
-#include "simple_crypto.h"
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -48,15 +45,27 @@
  *********************** CONSTANTS ************************
  **********************************************************/
 
-#define MAX_CHANNEL_COUNT 8
+#define MAX_CHANNEL_COUNT 9
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
+#define ENC_FRAME_SIZE (FRAME_SIZE+sizeof(timestamp_t))
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 #define ENCRYPTED_PACKET_SIZE 280
 #define ENCRYPTED_DATA_SIZE 256
 #define AUTH_DATA_SIZE 8
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
+
+///////////////////////Hardware Constants///////////////////
+#define TRAND_BASE_ADDR (0x4004D000)
+#define TRAND_CTRL_OFFSET (0x00 >> 2)
+#define TRAND_STATUS_OFFSET (0x04 >> 2)
+#define TRAND_DATA_OFFSET (0x08 >> 2)
+#define REAL_TIME_CLOCK_ADDR (0x40006000)
+#define SUBSEC_CTR_OFFSET (0x04 >> 2)
+#define RTC_KEYWIPE_BIT (0x01 << 15)
+#define RTC_KEYGEN_BIT (0x01 << 3)
+#define get_list_byte_size(a) (4 + (a * 20)) // 4 header bytes + 20 bytes per channel
 
 /**********************************************************
  ********************* STATE MACROS ***********************
@@ -75,6 +84,15 @@
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
 typedef struct {
     channel_id_t channel;
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
+} encrypted_frame_packet_t;
+
+typedef struct {
+    channel_id_t channel;
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
     timestamp_t timestamp;
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
@@ -110,6 +128,7 @@ typedef struct {
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
 
+
 typedef struct {
     bool active;
     channel_id_t id;
@@ -130,10 +149,45 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
+// Next timestamp allowed
+timestamp_t next_time_allowed = 0;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
+ 
+/** @brief Generate random sleep delay
+ * 
+ *  No params, void
+*/
+void randomSleep() {
+    uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
+
+    uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
+
+    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYWIPE_BIT; // keywipe
+    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYGEN_BIT;  // keygen
+    while (*(trand_base + TRAND_STATUS_OFFSET) == 0) { // Loop for rng gen 
+        ;
+    }
+    
+    uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET); // Random num value
+    // Get 7 bits becaus clock period is .25 ms 
+    // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
+    random_num &= 0x7F;
+    uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
+
+    while (1) { // Loop for random wait
+        if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
+          || *(real_time_clock + SUBSEC_CTR_OFFSET) < base_clk // Rollover check
+          || *(real_time_clock) == 0) { // Rollover double check
+            break;
+        }
+    }
+
+    return;
+}
+
 
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
@@ -160,17 +214,36 @@ int is_subscribed(channel_id_t channel) {
  **********************************************************/
 
 /** @brief Lists out the actively subscribed channels over UART.
- *
+ * 
  *  @return 0 if successful.
 */
 int list_channels() {
     list_response_t resp;
-    pkt_len_t len;
+    pkt_len_t len = 0;
 
     resp.n_channels = 0;
 
-    for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
+    // delete any lingering data
+    for (uint16_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
+        resp.channel_info[i].channel = 0;
+        resp.channel_info[i].start = 0;
+        resp.channel_info[i].end = 0;
+    }
+
+    // Start at i = 1 because we don't print out channel 0
+    for (uint32_t i = 1; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].active) {
+            if (resp.n_channels >= MAX_CHANNEL_COUNT) {
+                // too many channels
+                // TODO: Make this a defined value
+                return 1;
+            }
+            if (resp.channel_info[i].channel != 0 ||
+                resp.channel_info[i].start != 0 ||
+                resp.channel_info[i].end != 0) {
+                    // data in chanel_info array corrupted
+                    return 2;
+            }
             resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
             resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
             resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
@@ -180,6 +253,13 @@ int list_channels() {
 
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
 
+    // Num_channels (32 bit) + array of channel_id (32 bit), start (64 bit), end (64 bit) : n * (160 bit)
+    uint16_t expectedLen = get_list_byte_size(resp.n_channels);
+    if (len !=  expectedLen) {
+	printf("len was %d, expected %d\n", len, expectedLen);
+        // packet wrong size 
+        return 3;
+    }
     // Success message
     write_packet(LIST_MSG, &resp, len);
     return 0;
@@ -221,7 +301,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     
     // Sets the object to store the decrypted update packet.
     subscription_update_packet_t update;
-
+  
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
     int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t);
@@ -267,41 +347,94 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
  *
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
-int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-    char output_buf[128] = {0};
-    uint16_t frame_size;
-    channel_id_t channel;
+int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
+    frame_packet_t decrypted_frame;
 
-    // check that there's enough data to extract the channel and timestamp
-    // otherwise frame_size can underflow and lead to a huge number
-    if (pkt_len <= (sizeof(new_frame->channel) + sizeof(new_frame->timestamp))) {
+    //wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
+
+    int16_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
+
+    // checking to see if there is at least some data to decrypt
+    // timestamp is 8 bytes, frame must be at least one byte to be valid
+    if (encrypted_size < sizeof(timestamp_t)+1) { 
         print_error("Packet length of DECODE frame is too small\n");
         return -1;
     }
-    
-    // Frame size is the size of the packet minus the size of non-frame elements
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
-    channel = new_frame->channel;
+    if (encrypted_size > FRAME_SIZE + sizeof(timestamp_t)) {
+        print_error("Packet length of DECODE frame is too large\n");
+        return -1;
 
-    // The reference design doesn't use the timestamp, but you may want to in your design
-    // timestamp_t timestamp = new_frame->timestamp;
+    }
+    print_debug("Packet length okay\n");
 
-    // Check that we are subscribed to the channel...
-    print_debug("Checking subscription\n");
-    if (is_subscribed(channel)) {
-        print_debug("Subscription Valid\n");
-        /* The reference design doesn't need any extra work to decode, but your design likely will.
-        *  Do any extra decoding here before returning the result to the host. */
-        write_packet(DECODE_MSG, new_frame->data, frame_size);
-        return 0;
-    } else {
-        STATUS_LED_RED();
-        sprintf(
-            output_buf,
-            "Receiving unsubscribed channel data.  %u\n", channel);
-        print_error(output_buf);
+    //Is channel number an unsigned int >=0 and <=8?
+    if (enc_frame->channel < 0 || enc_frame->channel > 8)) {
+        print_error("Channel outside of valid range\n");
         return -1;
     }
+    print_debug("Channel inside valid range\n");
+
+    //Is decoder subscribed to the channel?
+    if (!is_subscribed(enc_frame->channel)) {
+        print_error("Not subscribed to channel\n");
+        return -1;
+    }
+    print_debug("Decoder is subscribed to channel\n");
+
+    //wait random amount of time between 1 and 30 milliseconds
+    randomSleep();
+    
+
+    // decrypt frame
+    // Encrypted and decrypted frames are the same size, so this should work.
+    // Then the decypted data can be put into the decrypted frame.
+    memcpy(&decrypted_frame, &enc_frame, sizeof(enc_frame));
+    if (!decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
+     (uint8_t *)&enc_frame->channel, 
+     (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].key, (uint8_t *)&enc_frame->nonce,\
+     (uint8_t *)&decrypted_frame.timestamp)) {
+        print_error("Decryption failed\n");
+        return -1;
+    } 
+    print_debug("Decryption succeeded\n");
+
+    //is the timestamp within decoder's subscription period
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp ||\
+     decrypted_frame.timestamp > decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp) {
+        print_error("Timestamp outside of subscription time\n");
+
+        // delete key from memory and mark channel as unsubscribed
+        memset(decoder_status.subscribed_channels[decrypted_frame.channel].key, 0, CHACHAPOLY_KEY_SIZE);
+        decoder_status.subscribed_channels[decrypted_frame.channel].active = false;
+        decoder_status.subscribed_channels[decrypted_frame.channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        decoder_status.subscribed_channels[decrypted_frame.channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+
+        // write deleted key from disk
+        flash_simple_erase_page(FLASH_STATUS_ADDR);
+        flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+
+        return -1;
+    }
+    print_debug("Timestamp inside subscription time\n");
+
+
+    //is the timestamp >= next allowed
+    if (decrypted_frame.timestamp < next_time_allowed) {
+        print_error("Timestamp is less than next time allowed\n");
+        return -1;
+    }
+    print_debug("Timestamp greater than or equal to next time allowed");
+
+    //play decoded TV frame
+    //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
+    //prevents type issues.
+    write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
+
+    //set next allowed timestamp to current frame's timestamp+1
+    next_time_allowed = decrypted_frame.timestamp + 1;
+
+    return 0;
 }
 
 /** @brief Initializes peripherals for system boot.
@@ -329,6 +462,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
+            memset(&subscription[i].key, 0, sizeof(subscription[i].key));
         }
 
         // Write the starting channel subscriptions into flash.
@@ -346,45 +480,6 @@ void init() {
         while (1);
     }
 }
-
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
-
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  *********************** MAIN LOOP ************************
@@ -424,18 +519,13 @@ int main(void) {
         case LIST_MSG:
             STATUS_LED_CYAN();
 
-            #ifdef CRYPTO_EXAMPLE
-                // Run the crypto example
-                // TODO: Remove this from your design
-                crypto_example();
-            #endif // CRYPTO_EXAMPLE
             list_channels();
             break;
 
         // Handle decode command
         case DECODE_MSG:
             STATUS_LED_PURPLE();
-            decode(pkt_len, (frame_packet_t *)uart_buf);
+            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command

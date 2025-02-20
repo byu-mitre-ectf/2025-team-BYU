@@ -13,38 +13,124 @@ Copyright: Copyright (c) 2025 The MITRE Corporation
 import argparse
 import json
 from pathlib import Path
-
 from loguru import logger
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
+
+KEY_SIZE = 32
+RSA_KEY_SIZE = 2048
+
+def generate_rsa_key_pair():
+    """Generate an RSA key pair.
+    
+    :returns: The RSA key pair, or None if there's an error
+    """
+    try:
+        key = RSA.generate(RSA_KEY_SIZE)
+        private_key = key
+        public_key = key.public_key().export_key()
+        return private_key, public_key
+    except Exception as e:
+        logger.error(f"Error generating RSA key pair: {e}")
+        return None
+    
+def write_file(filepath: Path, content, args, mode: str):
+    """Write content to a file.
+
+    :param filepath: Path to the file
+    :param content: Data to write
+    :param args: Arguments inputed when the code is run
+    :param mode: File open mode
+    """
+    try:
+        with open(filepath, mode if args.force else "xb") as file:
+            file.write(content)
+    except Exception as e:
+            logger.error(f"Error creating and writing to {filepath} : {e}")
 
 
-def gen_secrets(channels: list[int]) -> bytes:
-    """Generate the contents secrets file
+def gen_secrets(channels: list[int], args):
+    """Generate the contents of the .json secrets file and the .h secrets file
 
     This will be passed to the Encoder, ectf25_design.gen_subscription, and the build
     process of the decoder
 
-    :param channels: List of channel numbers that will be valid in this deployment.
-        Channel 0 is the emergency broadcast, which will always be valid and will
-        NOT be included in this list
-
-    :returns: Contents of the secrets file
+    :param channels: List of channel numbers
+    :param args: The arguments inputed when the code is run
     """
-    # TODO: Update this function to generate any system-wide secrets needed by
-    #   your design
 
-    # Create the secrets object
-    # You can change this to generate any secret material
-    # The secrets file will never be shared with attackers
+    # Generate chacha keys for each channel 
+    chacha_keys = []
+    try:
+        chacha_keys = [get_random_bytes(KEY_SIZE) for _ in range(9)]
+    except Exception as e:
+        logger.error(f"Error generating chacha keys: {e}")
+
+    # Generate poly1305 key
+    try:
+        poly1305_key = get_random_bytes(KEY_SIZE)
+    except Exception as e:
+        logger.error(f"Error generating poly1305 key: {e}")
+
+    # Generate RSA key pair and save them to files
+    private_key, public_key = generate_rsa_key_pair()
+
+    rsa_keys_directory = Path("rsa_keys")
+    rsa_keys_directory.mkdir(parents=True, exist_ok=True)
+
+    private_key_filename = rsa_keys_directory / f"private_key.pem"
+    public_key_filename = rsa_keys_directory / f"public_key.pem"
+
+    write_file(private_key_filename, private_key.export_key(), args, "wb")
+    write_file(public_key_filename, public_key, args, "wb")
+
+    rsa_private_hex = private_key.export_key(format="DER").hex()
+    rsa_public_hex = public_key.hex()
+
+    # Format secrets for C and write them to .h file
+    rsa_private_array = str(list(private_key.export_key(format="DER")))[1:-1]
+    poly_key_array = str(list(poly1305_key))[1:-1]
+    chacha_zero_array = str(list(chacha_keys[0]))[1:-1]
+
+    print(f"Poly Key: {poly_key_array}")
+    print(f"Chacha Key: {chacha_zero_array}")
+    print(f"RSA Key: {rsa_private_array}")
+
+    header_file_content = """#define SECRETS_H
+#ifndef SECRETS_H
+
+#include "adv_crypto.h"
+
+uint8_t subscription_decrypt_key[RSA_KEY_SIZE] = """ + "{{" + rsa_private_array + "}}" + """;
+
+uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{{" + poly_key_array + "}}" + """;
+
+uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{{" + chacha_zero_array + "}}" + """;
+
+#endif // SECRETS_H
+"""
+
+    # Create global.secrets directory for .h file and .json file
+    secrets_directory = Path("global.secrets")
+    secrets_directory.mkdir(parents=True, exist_ok=True)
+
+    header_file_path = "global.secrets/secrets.h"
+    write_file(header_file_path, header_file_content, args, "w")
+
+    poly_hex = poly1305_key.hex()
+    chacha_hex = [key.hex() for key in chacha_keys]
+
+    # Format secrets and write them to .json file
     secrets = {
-        "channels": channels,
-        "some_secrets": "EXAMPLE",
+        "chacha_keys": chacha_hex,
+        "poly1305_key": poly_hex,
+        "rsa_private_key": rsa_private_hex,
+        "rsa_public_key": rsa_public_hex,
     }
 
-    # NOTE: if you choose to use JSON for your file type, you will not be able to
-    # store binary data, and must either use a different file type or encode the
-    # binary data to hex, base64, or another type of ASCII-only encoding
-    return json.dumps(secrets).encode()
-
+    python_secrets_file = "global.secrets/secrets.json"
+    json_content = json.dumps(secrets).encode()
+    write_file(python_secrets_file, json_content, args, "wb")
 
 def parse_args():
     """Define and parse the command line arguments
@@ -53,7 +139,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--force",
+        "--force", 
         "-f",
         action="store_true",
         help="Force creation of secrets file, overwriting existing file",
@@ -72,31 +158,15 @@ def parse_args():
     )
     return parser.parse_args()
 
-
 def main():
     """Main function of gen_secrets
 
-    You will likely not have to change this function
     """
-    # Parse the command line arguments
+    # Parse the command line arguments.
     args = parse_args()
 
-    secrets = gen_secrets(args.channels)
-
-    # Print the generated secrets for your own debugging
-    # Attackers will NOT have access to the output of this, but feel free to remove
-    #
-    # NOTE: Printing sensitive data is generally not good security practice
-    logger.debug(f"Generated secrets: {secrets}")
-
-    # Open the file, erroring if the file exists unless the --force arg is provided
-    with open(args.secrets_file, "wb" if args.force else "xb") as f:
-        # Dump the secrets to the file
-        f.write(secrets)
-
-    # For your own debugging. Feel free to remove
-    logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
-
+    # Call generate secrets to create the .json and .h files.
+    gen_secrets(args.channels, args)
 
 if __name__ == "__main__":
     main()
