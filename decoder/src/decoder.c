@@ -89,7 +89,7 @@ typedef struct {
     uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
 } encrypted_frame_packet_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     // channel_id_t channel;
     // uint8_t nonce[CHACHAPOLY_IV_SIZE];
     // uint8_t auth_tag[AUTHTAG_SIZE];
@@ -97,13 +97,13 @@ typedef struct __attribute__((packed)) {
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
@@ -111,25 +111,23 @@ typedef struct __attribute__((packed)) {
     uint8_t channel_key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     channel_id_t channel;
     timestamp_t start;
     timestamp_t end;
 } channel_info_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     uint32_t n_channels;
     channel_info_t channel_info[MAX_CHANNEL_COUNT];
 } list_response_t;
-
-#pragma pack(pop) // Tells the compiler to resume padding struct members
 
 /**********************************************************
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
 
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     bool active;
     channel_id_t id;
     timestamp_t start_timestamp;
@@ -137,10 +135,12 @@ typedef struct __attribute__((packed)) {
     uint8_t channel_key[POLY_KEY_SIZE];
 } channel_status_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     uint32_t first_boot; // if set to FLASH_FIRST_BOOT, device has booted before.
     channel_status_t subscribed_channels[MAX_CHANNEL_COUNT];
 } flash_entry_t;
+
+#pragma pack(pop) // Tells the compiler to resume padding struct members
 
 /**********************************************************
  ************************ GLOBALS *************************
@@ -150,7 +150,7 @@ typedef struct __attribute__((packed)) {
 flash_entry_t decoder_status;
 
 // Next timestamp allowed
-// timestamp_t next_time_allowed = 0;
+timestamp_t next_time_allowed = 0;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -406,10 +406,10 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // decrypt frame
     // Encrypted and decrypted frames are the same size, so this should work.
     // Then the decypted data can be put into the decrypted frame.
-    uint8_t plaintext[sizeof(frame_packet_t)];
-    memset(plaintext, 0, sizeof(plaintext));
+    uint8_t *plaintext = malloc(sizeof(frame_packet_t));
+    memset(plaintext, 0, sizeof(frame_packet_t));
     int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
-        (uint8_t *)&enc_frame->channel, 
+        (uint8_t *)&enc_frame->channel, \
         (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
         plaintext);
     if (dec_val != 0) {
@@ -417,15 +417,10 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
         print_error(buffer);
         return -1;
     }
-    snprintf(buffer, sizeof(buffer), "Return value: %d\n", dec_val);
-    print_debug(buffer);
     print_debug("Decryption succeeded\n");
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
+    free(plaintext);
 
-    snprintf(buffer, sizeof(buffer), "Channel: %d\n", enc_frame->channel);
-    print_debug(buffer);
-    snprintf(buffer, sizeof(buffer), "Timestamp: %llu\n", decrypted_frame.timestamp);
-    print_debug(buffer);
     //is the timestamp within decoder's subscription period
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||\
      decrypted_frame.timestamp > decoder_status.subscribed_channels[enc_frame->channel].end_timestamp) {
@@ -447,11 +442,11 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
 
     //is the timestamp >= next allowed
-    // if (decrypted_frame.timestamp < next_time_allowed) {
-    //     print_error("Timestamp is less than next time allowed\n");
-    //     return -1;
-    // }
-    // print_debug("Timestamp greater than or equal to next time allowed");
+    if (decrypted_frame.timestamp < next_time_allowed) {
+        print_error("Timestamp is less than next time allowed\n");
+        return -1;
+    }
+    print_debug("Timestamp greater than or equal to next time allowed");
 
     //play decoded TV frame
     //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
