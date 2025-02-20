@@ -80,7 +80,7 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
     WC_RNG rng;
     RsaKey rsaKey;
     int32_t ret;
-    uint32_t idx = 0;
+    int32_t idx = 0;
 
     // init rng : returns 0 on success
     ret = wc_InitRng(&rng);
