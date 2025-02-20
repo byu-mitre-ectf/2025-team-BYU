@@ -50,6 +50,9 @@
 #define FRAME_SIZE 64
 #define ENC_FRAME_SIZE (FRAME_SIZE+sizeof(timestamp_t))
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
+#define ENCRYPTED_PACKET_SIZE 280
+#define ENCRYPTED_DATA_SIZE 256
+#define AUTH_DATA_SIZE 8
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
@@ -95,11 +98,17 @@ typedef struct {
 } frame_packet_t;
 
 typedef struct {
+    uint8_t additional_auth_data[AUTH_DATA_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
+} encrypted_update_packet_t
+
+typedef struct {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t key[POLY_KEY_SIZE];
+    uint8_t channel_key[POLY_KEY_SIZE]
 } subscription_update_packet_t;
 
 typedef struct {
@@ -125,7 +134,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t key[CHACHAPOLY_KEY_SIZE];
+    uint8_t channel_key[POLY_KEY_SIZE]
 } channel_status_t;
 
 typedef struct {
@@ -259,55 +268,75 @@ int list_channels() {
 
 /** @brief Updates the channel subscription for a subset of channels.
  *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
+ *  @param encrypted_data_t An RSA encrypted packet that contains a poly1305 authTag and the encrypted subscription_update_packet_t data.
  *
  *  @note Take care to note that this system is little endian.
  *
  *  @return 0 upon success.  -1 if error.
 */
-int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
-    int i;
+int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
+    // Sets the object to store the POLY 1305 hash
+    uint8_t calculated_tag[AUTHTAG_SIZE];
 
-    // ensure that the data provided from the UART is the exact same length as a subscription update packet
-    if (pkt_len != sizeof(subscription_update_packet_t)) {
-        print_error("Invalid subscription update packet\n");
+    if (ENCRYPTED_PACKET_SIZE != pkt_len)) {
+        return -1;
+    }
+    
+    // Hashes the encrypted packet with random delays to secure the process.
+    randomSleep();
+    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
+    randomSleep();
+
+    // Checks if the hash function was successful
+    if (hashStatus != 0) {
+        return -1;
+    }
+    
+    // If the calculated hash and sent hash do not match the program terminates.
+    if (encryptedData->auth_tag != calculated_tag) {
+        return -1;
+    }
+    // Another random delay to increase security of the encryption process.
+    randomSleep();
+    
+    // Sets the object to store the decrypted update packet.
+    subscription_update_packet_t update;
+  
+    // Decrypts the encrypted update packet with random delays to secure the decryption process.
+    randomSleep();
+    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t);
+    random_delay();
+
+    // Checks that decrypt function was successful
+    if (decryptStatus != 0) {
         return -1;
     }
 
-    //add decryption stuff here
-
-    if (update->channel == EMERGENCY_CHANNEL) {
-        STATUS_LED_RED();
-        print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
+    // Checks if the decoder id is a valid decoder id.
+    if(update->decoder_id != DECODER_ID) {
+        return -1;
+    }
+    
+    // Checks that channel is a non-emergency valid channel.
+    if (update->channel < 1 || update->channel > 8) {
         return -1;
     }
 
-    // TODO: Change this to only update a specified channel instead of the first one
-    // Find the first empty slot in the subscription array
-    for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
-        if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
-            decoder_status.subscribed_channels[i].active = true;
-            decoder_status.subscribed_channels[i].id = update->channel;
-            decoder_status.subscribed_channels[i].start_timestamp = update->start_timestamp;
-            decoder_status.subscribed_channels[i].end_timestamp = update->end_timestamp;
-            break;
-        }
-    }
+    // Writes the channel subscription to RAM.
+    decoder_status.subscribed_channels[update->channel].active = true;
+    decoder_status.subscribed_channels[update->channel].id = update->channel;
+    decoder_status.subscribed_channels[update->channel].start_timestamp = update->start_timestamp;
+    decoder_status.subscribed_channels[update->channel].end_timestamp = update->end_timestamp;
+    decoder_status.subscribed_channels[update->channel].channel_key = update->channel_key;
 
-    // If we do not have any room for more subscriptions
-    if (i == MAX_CHANNEL_COUNT) {
-        STATUS_LED_RED();
-        print_error("Failed to update subscription - max subscriptions installed\n");
-        return -1;
-    }
-
+    // Writes the channel subscription to flash.
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
+
+    // Clears update memory locations
+    memset(update, 'A', sizeof(update)*sizeof(uint8_t));
     return 0;
 }
 
@@ -502,7 +531,7 @@ int main(void) {
         // Handle subscribe command
         case SUBSCRIBE_MSG:
             STATUS_LED_YELLOW();
-            update_subscription(pkt_len, (subscription_update_packet_t *)uart_buf);
+            update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
             break;
 
         // Handle bad command
