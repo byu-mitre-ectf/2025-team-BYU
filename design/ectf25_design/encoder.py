@@ -74,7 +74,7 @@ class Encoder:
         ciphertext, tag = cipher.encrypt_and_digest(packet)
 
         # Construct the final packet with the channel number, the nonce, the ciphertext, and the tag
-        final_packet = struct.pack("<I", channel) + nonce + ciphertext + tag
+        final_packet = struct.pack("<I", channel) + nonce + tag + ciphertext
 
     # "sends" the final packet
         return final_packet
