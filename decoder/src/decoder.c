@@ -52,9 +52,9 @@
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
-#define SUBSCRIPTION_ENCRYPTED_PACKET 256
+#define ENCRYPTED_PACKET_SIZE 280
+#define ENCRYPTED_DATA_SIZE 256
 #define AUTH_DATA_SIZE 8
-#define MAXIMUM_MILISECOND_DELAY 25
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
@@ -82,7 +82,7 @@ typedef struct {
 typedef struct {
     uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
-    uint8_t cipher_text[SUBSCRIPTION_ENCRYPTED_PACKET];
+    uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t
 
 typedef struct {
@@ -194,13 +194,17 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
-int update_subscription(encrypted_update_packet_t *encryptedData) {
+int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
     // Sets the object to store the POLY 1305 hash
     uint8_t calculated_tag[AUTHTAG_SIZE];
 
+    if (ENCRYPTED_PACKET_SIZE != pkt_len)) {
+        return -1;
+    }
+    
     // Hashes the encrypted packet with random delays to secure the process.
     randomSleep();
-    int hashStatus = digest(encryptedData->cipher_text, SUBSCRIPTION_ENCRYPTED_PACKET, encryptedData->additional_auth_data, subscription_verify_key, calculated_tag);
+    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
     randomSleep();
 
     // Checks if the hash function was successful
@@ -220,16 +224,11 @@ int update_subscription(encrypted_update_packet_t *encryptedData) {
 
     // Decrypts the encrypted update packet with random delays to secure the decryption process.
     randomSleep();
-    int decryptStatus = decrypt_asym(encryptedData->cipherText, SUBSCRIPTION_ENCRYPTED_PACKET, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t);
+    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), update, sizeof(subscription_update_packet_t);
     random_delay();
 
     // Checks that decrypt function was successful
     if (decryptStatus != 0) {
-        return -1;
-    }
-    
-    // Check that all objects in the subscription_update_packet_t are the appropriate size.
-    if(sizeof(update) != sizeof(subscription_update_packet_t) || sizeof(update->channel) != sizeof(uint32_t) || sizeof(update->decoder_id) != sizeof(uint32_t) || sizeof(update->start_timestamp) != sizeof(uint64_t) || sizeof(update->end_timestamp) != sizeof(uint64_t) || sizeof(update->channel_key) != sizeof(CHANNEL_KEY_SIZE)) {
         return -1;
     }
 
