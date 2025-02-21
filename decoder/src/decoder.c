@@ -38,7 +38,7 @@
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
 /////////////////////// Hardware Constants ///////////////////
-#define TRAND_BASE_ADDR (0x4004D000)
+#define TRAND_BASE_ADDR (0x4004D000) // page 37 of the User Guide
 #define TRAND_CTRL_OFFSET (0x00 >> 2)
 #define TRAND_STATUS_OFFSET (0x04 >> 2)
 #define TRAND_DATA_OFFSET (0x08 >> 2)
@@ -137,7 +137,7 @@ timestamp_t next_time_allowed = 0;
  
 /** @brief Generate random sleep delay
  * 
- *  No params, void
+ *  No params, void. Page 367 in the User Guide
 */
 void randomSleep() {
     uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
