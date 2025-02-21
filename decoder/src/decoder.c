@@ -81,7 +81,7 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[POLY_KEY_SIZE];
+    uint8_t channel_key[MAC_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
@@ -111,7 +111,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t channel_key[POLY_KEY_SIZE];
+    uint8_t channel_key[MAC_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -390,6 +390,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
+    memset(plaintext, 'A', sizeof(plaintext));
     free(plaintext);
     plaintext = NULL;
 
