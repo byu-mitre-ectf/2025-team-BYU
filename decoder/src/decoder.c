@@ -291,6 +291,21 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+    // check that the start_timestamp is before the end_timestamp
+    if (update.start_timestamp > update.end_timestamp) {
+        return -1;
+    }
+
+    // check that the subscription is not expired
+    if (update.end_timestamp < next_time_allowed) {
+        return -1;
+    }
+
+    // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
+    if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
+        return -1;
+    }
+
     // write the channel subscription to RAM
     decoder_status.subscribed_channels[update.channel].active = true;
     decoder_status.subscribed_channels[update.channel].id = update.channel;
