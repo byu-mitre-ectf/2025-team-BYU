@@ -1,11 +1,15 @@
 import argparse
 import json
 from pathlib import Path
-import struct
+import struct, hmac, hashlib
 from loguru import logger
+from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
-from Crypto.Util.number import bytes_to_long, long_to_bytes
-from Crypto.Hash import Poly1305
+
+def take_hmac(key, message):
+    hmac_object = hmac.new(key, digestmod=hashlib.sha256)
+    hmac_object.update(message)
+    return hmac_object.digest()
 
 def gen_subscription(
     secrets: bytes, device_id: int, start: int, end: int, channel: int
@@ -33,47 +37,25 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     channel_key = secrets["channel_keys"][str(channel)]
 
     # Append the channel key (converted to bytes) to the packed numbers
-    source_message = packed_numbers + channel_key.encode()
+    source_message = packed_numbers + bytes.fromhex(channel_key)
     
     # Get RSA device private key from global secrets.
-    # Assumes the RSA device private key is stored under the key "rsa_device_key" in PEM format
-    # I looked at the decoder code for this and I **think** this is right, provided that the design doc is also correct
-    rsa_priv_pem = secrets.get("rsa_device_key")
-    rsa_key = RSA.import_key(rsa_priv_pem)
+    rsa_pub_pem = secrets.get("rsa_public_hex")
+    rsa_key = RSA.import_key(rsa_pub_pem)
     
-    # Convert the source message to a long integer (IS THIS NEEDED?)
-    # When I gave my code to Chat to check for bugs and stuff this was literally the only thing it said and it was VERY convinced that I needed it
-    m = bytes_to_long(source_message)
+    # Encrypt with RSA and OEAP padding (compatible with C code)
+    cipher = PKCS1_OAEP.new(rsa_key)
+    enc_msg = cipher.encrypt(source_message)
     
-    
-    # START CRYPTO :)    
-    # TODO: Macen please check my crypto here
-    
-    
-    # Encrypt source message using RSA private key.
-    # (Performing RSA private-key operation: c = m^d mod n)
-    c = pow(m, rsa_key.d, rsa_key.n)
-    
-    # Convert the result to bytes, padded to the RSA key size.
-    rsa_output = long_to_bytes(c, rsa_key.size_in_bytes())
-    
-    # Get Poly1305 device key from global secrets.
-    # Assumes the Poly1305 device key is stored under "poly1305_device_key" in the secrets file
-    poly1305_key = secrets.get("poly1305_device_key")
-
-    poly1305_key = poly1305_key.encode()  # Ensure it's in bytes as Poly1305 needs it
+    # Get HMAC device key from global secrets.
+    hmac_key = secrets.get("hmac_key")
+    hmac_key = bytes.fromhex(hmac_key) 
     
     # Compute Poly1305 MAC tag of the RSA output using the Poly1305 device key.
-    mac_obj = Poly1305.new(key=poly1305_key)
-    mac_obj.update(rsa_output)
-    mac_tag = mac_obj.digest()
-    
-    
-    # END CRYPTO :)
-    
+    mac_tag = take_hmac(hmac_key, enc_msg)
     
     # Append MAC to encrypted source message.
-    final_subscription = rsa_output + mac_tag
+    final_subscription = enc_msg + mac_tag
  
     # Pack the subscription. This will be sent to the decoder with ectf25.tv.subscribe
     return final_subscription

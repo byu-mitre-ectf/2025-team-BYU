@@ -38,7 +38,7 @@
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
 /////////////////////// Hardware Constants ///////////////////
-#define TRAND_BASE_ADDR (0x4004D000)
+#define TRAND_BASE_ADDR (0x4004D000) // page 37 of the User Guide
 #define TRAND_CTRL_OFFSET (0x00 >> 2)
 #define TRAND_STATUS_OFFSET (0x04 >> 2)
 #define TRAND_DATA_OFFSET (0x08 >> 2)
@@ -81,11 +81,10 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[POLY_KEY_SIZE];
+    uint8_t channel_key[MAC_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
-    uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
@@ -111,7 +110,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t channel_key[POLY_KEY_SIZE];
+    uint8_t channel_key[MAC_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -137,7 +136,7 @@ timestamp_t next_time_allowed = 0;
  
 /** @brief Generate random sleep delay
  * 
- *  No params, void
+ *  No params, void. Page 367 in the User Guide
 */
 void randomSleep() {
     uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
@@ -257,7 +256,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     
     // calculate the hash of the RSA-encrypted data + additional auth data to ensure it hasn't been tampered with
     // randomSleep();
-    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
+    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_verify_key, MAC_KEY_SIZE, calculated_tag);
 
     // check if the hash function was successful
     if (hashStatus != 0) {
@@ -390,7 +389,9 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
+    memset(plaintext, 'A', sizeof(plaintext));
     free(plaintext);
+    plaintext = NULL;
 
     // is the timestamp within decoder's subscription period?
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||
