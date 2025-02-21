@@ -470,8 +470,19 @@ void init() {
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
 
         // write the starting channel subscriptions into flash
-        flash_simple_erase_page(FLASH_STATUS_ADDR);
-        flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
+
+        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
     }
 
     // initialize the UART peripheral to enable serial I/O
