@@ -101,7 +101,7 @@ def gen_secrets(channels: list[int], args):
 
 #include "adv_crypto.h"
 
-uint8_t subscription_decrypt_key[{len(rsa_private_array)}] = """ + "{" + rsa_private_array + "}" + """;
+uint8_t subscription_decrypt_key[{len(bytes.fromhex(rsa_private_hex))}] = """ + "{" + rsa_private_array + "}" + """;
 
 uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{" + poly_key_array + "}" + """;
 
