@@ -85,7 +85,6 @@ typedef struct {
 } subscription_update_packet_t;
 
 typedef struct {
-    uint8_t additional_auth_data[AUTH_DATA_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
@@ -257,7 +256,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     
     // calculate the hash of the RSA-encrypted data + additional auth data to ensure it hasn't been tampered with
     // randomSleep();
-    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
+    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_verify_key, MAC_KEY_SIZE, calculated_tag);
 
     // check if the hash function was successful
     if (hashStatus != 0) {
