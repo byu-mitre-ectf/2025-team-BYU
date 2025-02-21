@@ -391,6 +391,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
     free(plaintext);
+    plaintext = NULL;
 
     // is the timestamp within decoder's subscription period?
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||
