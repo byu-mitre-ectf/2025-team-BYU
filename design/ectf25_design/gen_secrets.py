@@ -93,6 +93,9 @@ def gen_secrets(channels: list[int], args):
     poly_key_array = str(list(poly1305_key))[1:-1]
     chacha_zero_array = str(list(chacha_keys[0]))[1:-1]
 
+    # print(f"Poly Key: {poly_key_array}")
+    # print(f"Chacha Key: {chacha_zero_array}")
+    # print(f"RSA Key: {rsa_private_array}")
     header_file_content = f"""#ifndef SECRETS_H
 #define SECRETS_H
 
@@ -115,11 +118,12 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
     write_file(header_file_path, header_file_content, args, "w", "x")
 
     poly_hex = poly1305_key.hex()
-    chacha_hex = [key.hex() for key in chacha_keys]
+    chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
+    print(chacha_hex)
 
     # Format secrets and write them to .json file
     secrets = {
-        "chacha_keys": chacha_hex,
+        "channel_keys": chacha_hex,
         "poly1305_key": poly_hex,
         "rsa_private_key": rsa_private_hex,
         "rsa_public_key": rsa_public_hex,
