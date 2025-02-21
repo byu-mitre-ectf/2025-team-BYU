@@ -40,8 +40,8 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     source_message = packed_numbers + bytes.fromhex(channel_key)
     
     # Get RSA device private key from global secrets.
-    rsa_pub_pem = secrets.get("rsa_public_hex")
-    rsa_key = RSA.import_key(rsa_pub_pem)
+    rsa_pub_pem = secrets["rsa_public_key"]
+    rsa_key = RSA.import_key(bytes.fromhex(rsa_pub_pem))
     
     # Encrypt with RSA and OEAP padding (compatible with C code)
     cipher = PKCS1_OAEP.new(rsa_key)

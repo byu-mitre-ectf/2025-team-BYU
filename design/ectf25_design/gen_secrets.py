@@ -103,7 +103,7 @@ def gen_secrets(channels: list[int], args):
 
 uint8_t subscription_decrypt_key[{len(bytes.fromhex(rsa_private_hex))}] = """ + "{" + rsa_private_array + "}" + """;
 
-uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{" + hmac_key_array + "}" + """;
+uint8_t subscription_verify_key[MAC_KEY_SIZE] = """ + "{" + hmac_key_array + "}" + """;
 
 uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
 
