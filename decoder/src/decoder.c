@@ -1,16 +1,3 @@
-/**
- * @file    decoder.c
- * @author  Samuel Meyers
- * @brief   eCTF Decoder Example Design Implementation
- * @date    2025
- *
- * This source file is part of an example system for MITRE's 2025 Embedded System CTF (eCTF).
- * This code is being provided only for educational purposes for the 2025 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
- *
- * @copyright Copyright (c) 2025 The MITRE Corporation
- */
-
 /*********************** INCLUDES *************************/
 #include <stdio.h>
 #include <stdint.h>
@@ -28,10 +15,6 @@
 #include <stdlib.h>
 #include "secrets.h"
 
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
  **********************************************************/
@@ -47,16 +30,14 @@
 
 #define MAX_CHANNEL_COUNT 9
 #define EMERGENCY_CHANNEL 0
-#define FRAME_SIZE 64
-#define ENC_FRAME_SIZE (FRAME_SIZE+sizeof(timestamp_t))
+#define MAX_FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
-#define ENCRYPTED_PACKET_SIZE 280
 #define ENCRYPTED_DATA_SIZE 256
 #define AUTH_DATA_SIZE 8
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
-///////////////////////Hardware Constants///////////////////
+/////////////////////// Hardware Constants ///////////////////
 #define TRAND_BASE_ADDR (0x4004D000)
 #define TRAND_CTRL_OFFSET (0x00 >> 2)
 #define TRAND_STATUS_OFFSET (0x04 >> 2)
@@ -82,26 +63,18 @@
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
+
+typedef struct {
+    timestamp_t timestamp;
+    uint8_t data[MAX_FRAME_SIZE];
+} frame_packet_t;
+
 typedef struct {
     channel_id_t channel;
     uint8_t nonce[CHACHAPOLY_IV_SIZE];
     uint8_t auth_tag[AUTHTAG_SIZE];
-    uint8_t encrypted_data[FRAME_SIZE+sizeof(timestamp_t)];
+    uint8_t encrypted_data[sizeof(frame_packet_t)];
 } encrypted_frame_packet_t;
-
-typedef struct {
-    // channel_id_t channel;
-    // uint8_t nonce[CHACHAPOLY_IV_SIZE];
-    // uint8_t auth_tag[AUTHTAG_SIZE];
-    timestamp_t timestamp;
-    uint8_t data[FRAME_SIZE];
-} frame_packet_t;
-
-typedef struct {
-    uint8_t additional_auth_data[AUTH_DATA_SIZE];
-    uint8_t auth_tag[AUTHTAG_SIZE];
-    uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
-} encrypted_update_packet_t;
 
 typedef struct {
     decoder_id_t decoder_id;
@@ -110,6 +83,12 @@ typedef struct {
     channel_id_t channel;
     uint8_t channel_key[POLY_KEY_SIZE];
 } subscription_update_packet_t;
+
+typedef struct {
+    uint8_t additional_auth_data[AUTH_DATA_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
+} encrypted_update_packet_t;
 
 typedef struct {
     channel_id_t channel;
@@ -126,7 +105,6 @@ typedef struct {
 /**********************************************************
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
-
 
 typedef struct {
     bool active;
@@ -196,15 +174,9 @@ void randomSleep() {
  *  @return 1 if the the decoder is subscribed to the channel.  0 if not.
 */
 int is_subscribed(channel_id_t channel) {
-    // Check if this is an emergency broadcast message
-    if (channel == EMERGENCY_CHANNEL) {
-        return 1;
-    }
     // Check if the decoder has has a subscription
-    for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
-        if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active) {
-            return 1;
-        }
+    if (decoder_status.subscribed_channels[channel].active) {
+        return 1;
     }
     return 0;
 }
@@ -225,26 +197,23 @@ int list_channels() {
     resp.n_channels = 0;
 
     // delete any lingering data
-    for (uint16_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
-        resp.channel_info[i].channel = 0;
-        resp.channel_info[i].start = 0;
-        resp.channel_info[i].end = 0;
-    }
+    memset(&resp, 0, sizeof(list_response_t));
 
-    // Start at i = 1 because we don't print out channel 0
+    // start at i = 1 because we don't print out channel 0
     for (uint32_t i = 1; i < MAX_CHANNEL_COUNT; i++) {
+        // check to see if there's an active subscription for that channel
         if (decoder_status.subscribed_channels[i].active) {
+            // double check that we have space to fit the channel info in resp
             if (resp.n_channels >= MAX_CHANNEL_COUNT) {
-                // too many channels
-                // TODO: Make this a defined value
-                return 1;
+                return -1;
             }
-            if (resp.channel_info[i].channel != 0 ||
-                resp.channel_info[i].start != 0 ||
-                resp.channel_info[i].end != 0) {
-                    // data in chanel_info array corrupted
-                    return 2;
+
+            // check to see if the channel_info array is corrupted
+            if ((resp.channel_info[resp.n_channels].channel != 0) || (resp.channel_info[resp.n_channels].start != 0) || (resp.channel_info[resp.n_channels].end != 0)) {
+                return -1;
             }
+
+            // if all is good, add the channel info to resp
             resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
             resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
             resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
@@ -254,146 +223,148 @@ int list_channels() {
 
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
 
-    // Num_channels (32 bit) + array of channel_id (32 bit), start (64 bit), end (64 bit) : n * (160 bit)
+    // n_channels (32 bit) + array of channel_id (32 bit), start (64 bit), end (64 bit) : n * (160 bit)
     uint16_t expectedLen = get_list_byte_size(resp.n_channels);
-    if (len !=  expectedLen) {
-	printf("len was %d, expected %d\n", len, expectedLen);
-        // packet wrong size 
-        return 3;
+
+    if (len != expectedLen) {
+        // wrong packet size
+        return -1;
     }
-    // Success message
+
+    // return the array of channels
     write_packet(LIST_MSG, &resp, len);
     return 0;
 }
 
 
-/** @brief Updates the channel subscription for a subset of channels.
+/** @brief Updates the channel subscription using a provided encrypted update packet.
  *
- *  @param encrypted_data_t An RSA encrypted packet that contains a poly1305 authTag and the encrypted subscription_update_packet_t data.
+ *  @param pkt_len The length of the message received over UART
+ *  @param encryptedData An RSA encrypted packet that contains a poly1305 authTag and the encrypted subscription_update_packet_t data.
  *
  *  @note Take care to note that this system is little endian.
  *
- *  @return 0 upon success.  -1 if error.
+ *  @return 0 upon success. -1 if error.
 */
 int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
-    // Sets the object to store the POLY 1305 hash
+    // stores the calculated Poly1305 hash
     uint8_t calculated_tag[AUTHTAG_SIZE];
 
-    if (ENCRYPTED_PACKET_SIZE != pkt_len) {
+    // ensure that the UART message size matches the expected size of an encrypted update packet
+    if (sizeof(encrypted_update_packet_t) != pkt_len) {
         return -1;
     }
     
-    // Hashes the encrypted packet with random delays to secure the process.
+    // calculate the hash of the RSA-encrypted data + additional auth data to ensure it hasn't been tampered with
     // randomSleep();
     int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, encryptedData->additional_auth_data, AUTH_DATA_SIZE, subscription_verify_key, calculated_tag);
 
-    // Checks if the hash function was successful
+    // check if the hash function was successful
     if (hashStatus != 0) {
         return -1;
     }
     
-    // If the calculated hash and sent hash do not match the program terminates.
-    if (encryptedData->auth_tag != calculated_tag) {
+    // if the calculated hash and sent hash do not match, terminate the program
+    if (memcmp(encryptedData->auth_tag, calculated_tag, sizeof(calculated_tag)) != 0) {
         return -1;
     }
-    // Another random delay to increase security of the encryption process.
-    // randomSleep();
     
-    // Sets the object to store the decrypted update packet.
+    // stores the decrypted update packet
     subscription_update_packet_t update;
   
-    // Decrypts the encrypted update packet with random delays to secure the decryption process.
+    // decrypt the encrypted update packet with random delays
     // randomSleep();
     int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
 
-    // Checks that decrypt function was successful
+    // check that the decrypt function was successful
     if (decryptStatus != 0) {
         return -1;
     }
 
-    // Checks if the decoder id is a valid decoder id.
-    if(update.decoder_id != DECODER_ID) {
+    // check if the decoder id corresponds to our decoder ID
+    if (update.decoder_id != DECODER_ID) {
         return -1;
     }
     
-    // Checks that channel is a non-emergency valid channel.
+    // check that channel is a non-emergency valid channel
     if (update.channel < 1 || update.channel > 8) {
         return -1;
     }
 
-    // Writes the channel subscription to RAM.
+    // write the channel subscription to RAM
     decoder_status.subscribed_channels[update.channel].active = true;
     decoder_status.subscribed_channels[update.channel].id = update.channel;
     decoder_status.subscribed_channels[update.channel].start_timestamp = update.start_timestamp;
     decoder_status.subscribed_channels[update.channel].end_timestamp = update.end_timestamp;
-    // decoder_status.subscribed_channels[update.channel].channel_key = update.channel_key;
     memcpy(decoder_status.subscribed_channels[update.channel].channel_key, update.channel_key, CHACHAPOLY_KEY_SIZE);
 
-    // Writes the channel subscription to flash.
+    // write all channel subscriptions to flash
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
-    // Success message with an empty body
+
+    // send a success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
 
-    // Clears update memory locations
-    memset(&update, 'A', sizeof(update)*sizeof(uint8_t));
+    // clear memory to prevent uninitialized memory bugs
+    memset(&update, 'A', sizeof(update));
     return 0;
 }
 
 /** @brief Processes a packet containing frame data.
  *
- *  @param pkt_len A pointer to the incoming packet.
- *  @param new_frame A pointer to the incoming packet.
+ *  @param pkt_len The length of the encrypted frame packet
+ *  @param enc_frame A pointer to the incoming encrypted frame packet
  *
- *  @return 0 if successful.  -1 if data is from unsubscribed channel.
+ *  @return 0 if successful. -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
-    //wait random amount of time between 1 and 30 milliseconds
     // randomSleep();
 
+    /* assuming the channel, nonce, and tag are present in the encrypted
+       frame packet, calculate the size of the encrypted frame */
     pkt_len_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
 
-    // checking to see if there is at least some data to decrypt
-    // timestamp is 8 bytes, frame must be at least one byte to be valid
-    if (encrypted_size < sizeof(timestamp_t)+1) { 
+    // ensure there is at least one byte in the frame (other than the timestamp) to decrypt
+    if (encrypted_size < sizeof(timestamp_t)+1) {
         print_error("Packet length of DECODE frame is too small\n");
         return -1;
     }
-    if (encrypted_size > FRAME_SIZE + sizeof(timestamp_t)) {
+
+    // ensure that no more than 64 bytes of encrypted data is sent with the timestamp
+    if (encrypted_size > MAX_FRAME_SIZE + sizeof(timestamp_t)) {
         print_error("Packet length of DECODE frame is too large\n");
         return -1;
-
     }
     print_debug("Packet length okay\n");
 
-    //Is channel number an unsigned int >=0 and <=8?
+    // is channel number an unsigned int >=0 and <=8?
     if (enc_frame->channel < 0 || enc_frame->channel > 8) {
         print_error("Channel outside of valid range\n");
         return -1;
     }
     print_debug("Channel inside valid range\n");
 
-    //Is decoder subscribed to the channel?
+    // is decoder subscribed to the channel?
     if (!is_subscribed(enc_frame->channel)) {
         print_error("Not subscribed to channel\n");
         return -1;
     }
     print_debug("Decoder is subscribed to channel\n");
 
-    //wait random amount of time between 1 and 30 milliseconds
-    // randomSleep();
-
-    // decrypt frame
-    // Encrypted and decrypted frames are the same size, so this should work.
-    // Then the decypted data can be put into the decrypted frame.
+    // set up buffer to store decrypted frame data
     uint8_t *plaintext = malloc(sizeof(frame_packet_t));
     memset(plaintext, 'A', sizeof(frame_packet_t));
-    int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,\
-        (uint8_t *)&enc_frame->channel, \
-        (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,\
+    
+    // decrypt the encrypted frame using the corresponding channel key and the ChaChaPoly1305 cipher
+    // randomSleep();
+    int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,
+        (uint8_t *)&enc_frame->channel,
+        (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,
         plaintext);
+
+    // check if the decryption function ran successfully
     if (dec_val != 0) {
         char buffer[100];
         snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
@@ -401,11 +372,13 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
         return -1;
     }
     print_debug("Decryption succeeded\n");
+
+    // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
     free(plaintext);
 
-    //is the timestamp within decoder's subscription period
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||\
+    // is the timestamp within decoder's subscription period?
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||
      decrypted_frame.timestamp > decoder_status.subscribed_channels[enc_frame->channel].end_timestamp) {
         print_error("Timestamp outside of subscription time\n");
 
@@ -424,20 +397,18 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     print_debug("Timestamp inside subscription time\n");
 
 
-    //is the timestamp >= next allowed
+    // is the timestamp >= next allowed
     if (decrypted_frame.timestamp < next_time_allowed) {
         print_error("Timestamp is less than next time allowed\n");
         return -1;
     }
     print_debug("Timestamp greater than or equal to next time allowed");
 
-    //play decoded TV frame
-    //encrypted_size-sizeof(timestamp_t) is guarenteed to be positive because of our check above
-    //prevents type issues.
+    // play decoded TV frame
     write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
 
-    //set next allowed timestamp to current frame's timestamp+1
-    // next_time_allowed = decrypted_frame.timestamp + 1;
+    // set next allowed timestamp to current frame's timestamp+1
+    next_time_allowed = decrypted_frame.timestamp + 1;
 
     return 0;
 }
@@ -447,18 +418,21 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 void init() {
     int ret;
 
-    // Initialize the flash peripheral to enable access to persistent memory
+    // initialize the flash peripheral to enable access to persistent memory
     flash_simple_init();
 
-    // Read starting flash values into our flash status struct
+    // read starting flash values into our flash status struct
     flash_simple_read(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+
+    // if first_boot is set, then set all channels to NULL and fill in channel 0
     if (decoder_status.first_boot != FLASH_FIRST_BOOT) {
         /* If this is the first boot of this decoder, mark all channels as unsubscribed.
         *  This data will be persistent across reboots of the decoder. Whenever the decoder
         *  processes a subscription update, this data will be updated.
         */
-        print_debug("First boot.  Setting flash...\n");
+        print_debug("First boot. Setting flash...\n");
 
+        // mark the decoder as having booted before, and thus all the data in decoder_status can be trusted
         decoder_status.first_boot = FLASH_FIRST_BOOT;
 
         channel_status_t subscription[MAX_CHANNEL_COUNT];
@@ -476,14 +450,15 @@ void init() {
         subscription[0].active = true;
         memcpy(subscription[0].channel_key, channel_0_key, CHACHAPOLY_KEY_SIZE);
 
-        // Write the starting channel subscriptions into flash.
+        // write the starting channel subscriptions into RAM
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
 
+        // write the starting channel subscriptions into flash
         flash_simple_erase_page(FLASH_STATUS_ADDR);
         flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     }
 
-    // Initialize the uart peripheral to enable serial I/O
+    // initialize the UART peripheral to enable serial I/O
     ret = uart_init();
     if (ret < 0) {
         STATUS_LED_ERROR();
@@ -498,7 +473,7 @@ void init() {
 
 int main(void) {
     char output_buf[128] = {0};
-    // also could do length checks if this proves problematic
+    // also could do length checks if this size proves problematic
     uint8_t uart_buf[0x10000];
     msg_type_t cmd;
     int result;
@@ -548,7 +523,7 @@ int main(void) {
         // Handle bad command
         default:
             STATUS_LED_ERROR();
-            sprintf(output_buf, "Invalid Command: %c\n", cmd);
+            snprintf(output_buf, sizeof(output_buf), "Invalid Command: %c\n", cmd);
             print_error(output_buf);
             break;
         }

@@ -15,7 +15,6 @@ class Encoder:
         # Load the JSON from the secrets file
         secrets = json.loads(secrets)
         
-        # Change 'channel_keys' to whatever the name of the JSON data is
         # self.channel_keys["0"] would output the valid channel key
         self.channel_keys = secrets["channel_keys"]  
 
@@ -37,7 +36,7 @@ class Encoder:
 
         :returns: The encoded frame, which will be sent to the Decoder
         """
-        
+
         # Start by validating all inputs. Throw an appropriate error when needed
         # Ensures a frame is equal to or over 64 bytes
         if len(frame) > 64:
@@ -53,35 +52,30 @@ class Encoder:
         packet = struct.pack("<Q", timestamp) + frame
 
         # Reads the key for the channel
-        # TODO: Add some logic here for what we want to happen if you try to use an invalid subscription, if anything?
         if str(channel) not in self.channel_keys:
             raise ValueError(f"No key found for channel {channel}!")
 
-    # Gets the key for a specific channel, and converts the key from a string into bytes
+        # Gets the key for a specific channel, and converts the key from a string into bytes
         key = bytes.fromhex(self.channel_keys[str(channel)])
-        
-        # Example for separate key files per channel. I'm pretty sure all the keys are in the same file but I need to ask.
-        # with open(f"channel_{channel}_key.txt", "rb") as key_file:
-        #     key = key_file.read()
 
         # Generate a random 12 byte nonce for the encryption
         # ChaCha20-Poly1305 can use a 12-byte nonce
-        nonce = get_random_bytes(12)  
+        nonce = get_random_bytes(12)
 
         # Encrypt the packet using ChaCha20-Poly1305
         cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
         cipher.update(struct.pack("<I", channel) + nonce)
+
         # Turns the packet into ciphertext, and also creates a tag associated with it (ty random chinese guy)
         ciphertext, tag = cipher.encrypt_and_digest(packet)
 
         # Construct the final packet with the channel number, the nonce, the ciphertext, and the tag
         final_packet = struct.pack("<I", channel) + nonce + tag + ciphertext
 
-    # "sends" the final packet
+        # "sends" the final packet
         return final_packet
 
 
-# TODO: I'm not 100% sure what needs to be done down here or if we even need it? Maybe? I need to ask.
 def main():
     """A test main to one-shot encode a frame
 

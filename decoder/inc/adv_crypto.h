@@ -25,27 +25,6 @@
 #define RSA_KEY_SIZE 256
 
 /******************************** FUNCTION PROTOTYPES ********************************/
-/** @brief Encrypts plaintext using the ChaCha20-Poly1305 cipher
- *
- * @param plaintext A pointer to a buffer of length len containing the
- *          plaintext to encrypt
- * @param len The length of the plaintext to encrypt
- * @param aad A pointer to a buffer containing arbitrary length "additional 
- *          assoiated data" for the Poly1305 hash
- * @param aad_len The length of the AAD
- * @param key A pointer to a buffer of length CHACHAPOLY_KEY_SIZE (32 bytes)
- *          containing the key to use for encryption
- * @param iv A pointer to a buffer of length CHACHAPOLY_IV_SIZE (12 bytes)
- *          containing the iv to use for encryption
- * @param ciphertext A pointer to a buffer of length len to which the resulting
- *          ciphertext will be written
- * @param authTag A pointer to a buffer of length AUTHTAG_SIZE (16 bytes)
- *          to which the resulting digest will be written
- *
- * @return 0 on success, other non-zero for other error
- */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *ciphertext, uint8_t *authTag);
-
 /** @brief Decrypts ciphertext using the ChaCha20-Poly1305 cipher
  *
  * @param ciphertext A pointer to a buffer of length len containing the
@@ -55,7 +34,6 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *aad, uint8_t *key, uint
  *           containing the digest for authentication
  * @param aad A pointer to a buffer containing arbitrary length "additional 
  *          assoiated data" for the Poly1305 hash
- * @param aad_len The length of the AAD
  * @param key A pointer to a buffer of length CHACHAPOLY_KEY_SIZE (32 bytes)
  *          containing the key to use for encryption
  * @param iv A pointer to a buffer of length CHACHAPOLY_IV_SIZE (12 bytes)
@@ -69,10 +47,12 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad,
 
 /** @brief Decrypts a ciphertext using RSA
  * 
- * @param ciphertext A pointer to a buffer of less than RSA_KEY_SIZE bytes
- *          for our purposes, this will always be ~52 bytes
+ * @param ciphertext A pointer to a buffer of len ctSize containing the ciphertext
+ * @param ctSize The length of the ciphertext to decrypt
  * @param keyData Ngl idk yet what this holds but it'll be the key information
+ * @param keyLen The length of keyData
  * @param plaintext A pointer to a buffer where the decrypted data will be stored
+ * @param ptSize The length of the plaintext buffer
  * 
  * @return 0 on success, non-zero for other error
  */
@@ -83,7 +63,9 @@ int decrypt_asym(uint8_t *ciphertext, size_t ctSize, uint8_t *keyData, size_t ke
  * @param data A pointer to a buffer of length len containing the data
  *           to be hashed
  * @param len The length of the plaintext to hash
- * @param key A pointer to a buffer of length POLY_KEY_SIZE (32 bytes) for use in computing the hash/digest
+ * @param aad Additional authentication data of length aadLen to be included in the hash calculation
+ * @param aadLen The length of aad
+ * @param key A pointer to a buffer containing the Poly1305 key used in the hash check
  * @param mac A pointer to a buffer of length POLY1305_DIGEST_SIZE (16 bytes) where the resulting
  *           hash output will be written to
  *
