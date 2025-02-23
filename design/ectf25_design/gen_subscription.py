@@ -49,13 +49,13 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     
     # Get HMAC device key from global secrets.
     hmac_key = secrets.get("hmac_key")
-    hmac_key = bytes.fromhex(hmac_key) 
+    hmac_key = bytes.fromhex(hmac_key)
     
     # Compute Poly1305 MAC tag of the RSA output using the Poly1305 device key.
     mac_tag = take_hmac(hmac_key, enc_msg)
     
     # Append MAC to encrypted source message.
-    final_subscription = enc_msg + mac_tag
+    final_subscription = mac_tag + enc_msg
  
     # Pack the subscription. This will be sent to the decoder with ectf25.tv.subscribe
     return final_subscription

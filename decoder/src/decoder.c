@@ -38,6 +38,8 @@
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
 /////////////////////// Hardware Constants ///////////////////
+#define GCR_BASE (0x40000000)
+#define GCR_PCLKDIS1_BASE (GCR_BASE + 0x48)
 #define TRAND_BASE_ADDR (0x4004D000) // page 37 of the User Guide
 #define TRAND_CTRL_OFFSET (0x00 >> 2)
 #define TRAND_STATUS_OFFSET (0x04 >> 2)
@@ -85,7 +87,7 @@ typedef struct {
 } subscription_update_packet_t;
 
 typedef struct {
-    uint8_t auth_tag[AUTHTAG_SIZE];
+    uint8_t auth_tag[MAC_KEY_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
 
@@ -134,22 +136,28 @@ timestamp_t next_time_allowed = 0;
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
  
+/** @brief Generate a random, 32-bit unsigned integer
+ * 
+ *  No params, void.
+ *  Utilizes the TRNG Module on the MAX78000
+ *  See page 367 of the User Guide for more information
+ */
+uint32_t true_random() {
+    volatile uint32_t* trand_base = (volatile uint32_t*)TRAND_BASE_ADDR; 
+    // Every time that offset is accessed, it clears the status bit and regenerates a random number  
+    uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET);
+    return random_num;
+}
+
+
 /** @brief Generate random sleep delay
  * 
- *  No params, void. Page 367 in the User Guide
+ *  No params, void.
 */
 void randomSleep() {
-    uint32_t* trand_base = (uint32_t*)TRAND_BASE_ADDR;
-
     uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
-
-    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYWIPE_BIT; // keywipe
-    *(trand_base + TRAND_CTRL_OFFSET) = RTC_KEYGEN_BIT;  // keygen
-    while (*(trand_base + TRAND_STATUS_OFFSET) == 0) { // Loop for rng gen 
-        ;
-    }
     
-    uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET); // Random num value
+    uint32_t random_num = true_random(); // Random num value
     // Get 7 bits becaus clock period is .25 ms 
     // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
     random_num &= 0x7F;
@@ -163,7 +171,6 @@ void randomSleep() {
         }
     }
 
-    return;
 }
 
 
@@ -247,10 +254,15 @@ int list_channels() {
 */
 int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
     // stores the calculated Poly1305 hash
+    print_debug("started the function");
     uint8_t calculated_tag[AUTHTAG_SIZE];
+
+    char buffer[100];
 
     // ensure that the UART message size matches the expected size of an encrypted update packet
     if (sizeof(encrypted_update_packet_t) != pkt_len) {
+        snprintf(buffer, sizeof(buffer), "Failed length check. Packet length: %d; Expected: %d\n", pkt_len, sizeof(encrypted_update_packet_t));
+        print_error(buffer);
         return -1;
     }
     
@@ -260,11 +272,13 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // check if the hash function was successful
     if (hashStatus != 0) {
+        print_error("Hash failed");
         return -1;
     }
     
     // if the calculated hash and sent hash do not match, terminate the program
     if (memcmp(encryptedData->auth_tag, calculated_tag, sizeof(calculated_tag)) != 0) {
+        print_error("hash mismatch!");
         return -1;
     }
     
@@ -277,31 +291,38 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // check that the decrypt function was successful
     if (decryptStatus != 0) {
+        snprintf(buffer, sizeof(buffer), "Failed decrypt: %d", decryptStatus);
+        print_error(buffer);
         return -1;
     }
 
     // check if the decoder id corresponds to our decoder ID
     if (update.decoder_id != DECODER_ID) {
+        print_error("Bad decoder id");
         return -1;
     }
     
     // check that channel is a non-emergency valid channel
     if (update.channel < 1 || update.channel > 8) {
+        print_error("Bad channel");
         return -1;
     }
 
     // check that the start_timestamp is before the end_timestamp
     if (update.start_timestamp > update.end_timestamp) {
+        print_error("Bad timestamp (bad order)");
         return -1;
     }
 
     // check that the subscription is not expired
     if (update.end_timestamp < next_time_allowed) {
+        print_error("Bad timestamp (already expired)");
         return -1;
     }
 
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
+        print_error("Bad timestamp (too soon)");
         return -1;
     }
 
@@ -389,7 +410,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
-    memset(plaintext, 'A', sizeof(plaintext));
+    memset(plaintext, 'A', sizeof(frame_packet_t));
     free(plaintext);
     plaintext = NULL;
 
@@ -473,6 +494,10 @@ void init() {
         flash_simple_erase_page(FLASH_STATUS_ADDR);
         flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     }
+
+    // Enable TRNG : page 91
+    volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
+    *pclkdis1 = ~(1<<2);
 
     // initialize the UART peripheral to enable serial I/O
     ret = uart_init();
