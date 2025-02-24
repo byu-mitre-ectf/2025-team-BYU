@@ -483,7 +483,7 @@ void init() {
 
     // Enable TRNG : page 91
     volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
-    *pclkdis1 = ~GCR_TRAND_DISABLE;
+    *pclkdis1 &= ~GCR_TRAND_DISABLE;
 
     // initialize the UART peripheral to enable serial I/O
     ret = uart_init();
