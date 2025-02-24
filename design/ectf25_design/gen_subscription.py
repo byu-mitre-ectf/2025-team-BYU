@@ -50,7 +50,6 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     ciphertext, tag = cipher.encrypt_and_digest(source_message)
     
     # Final message
-    print(len(ciphertext))
     final_subscription = aad + nonce + tag + ciphertext
  
     # Pack the subscription. This will be sent to the decoder with ectf25.tv.subscribe
