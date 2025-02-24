@@ -44,10 +44,16 @@
 #define TRAND_CTRL_OFFSET (0x00 >> 2)
 #define TRAND_STATUS_OFFSET (0x04 >> 2)
 #define TRAND_DATA_OFFSET (0x08 >> 2)
+#define TRAND_RTC_KEYWIPE_BIT (0x01 << 15)
+#define TRAND_RTC_KEYGEN_BIT (0x01 << 3)
 #define REAL_TIME_CLOCK_ADDR (0x40006000)
 #define SUBSEC_CTR_OFFSET (0x04 >> 2)
-#define RTC_KEYWIPE_BIT (0x01 << 15)
-#define RTC_KEYGEN_BIT (0x01 << 3)
+#define RTC_CTRL_ADDR (REAL_TIME_CLOCK_ADDR + 0x10)
+#define RTC_BUSY (0x01 << 3)
+#define RTC_WRITE_ENABLE (0x01 << 15)
+#define RTC_ENABLE (0x01)
+#define RTC_SSEC_MAX 0xfff
+#define SLEEP_MASK 0x7f
 #define get_list_byte_size(a) (4 + (a * 20)) // 4 header bytes + 20 bytes per channel
 
 /**********************************************************
@@ -148,39 +154,34 @@ uint32_t true_random(void) {
     volatile uint32_t* trand_base = (volatile uint32_t*)TRAND_BASE_ADDR; 
     // Every time that offset is accessed, it clears the status bit and regenerates a random number  
     uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET);
-    print_debug("Random number generated");
     return random_num;
 }
 
 
 /** @brief Generate random sleep delay
  * 
- *  No params, void.
+ *  No params, void. Page 279
 */
 void randomSleep(void) {
-    uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
+    volatile uint32_t* real_time_clock = (volatile uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
     
     uint32_t random_num = true_random(); // Random num value
     // Get 7 bits becaus clock period is .25 ms 
     // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
-    random_num &= 0x7F;
-    char buffer[100];
-    snprintf(buffer, sizeof(buffer), "Random num: %u", random_num);
-    print_debug(buffer);
+    random_num &= SLEEP_MASK;
+
     uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
-    snprintf(buffer, sizeof(buffer), "Base clock: %u", base_clk);
-    print_debug(buffer);
+    uint16_t loop_cap = (base_clk + random_num) & RTC_SSEC_MAX;
+    bool rollover = loop_cap < base_clk;
 
     while (1) { // Loop for random wait
-        if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
-          || *(real_time_clock + SUBSEC_CTR_OFFSET) < base_clk // Rollover check
-          || *(real_time_clock) == 0) { // Rollover double check
+        if ((!rollover && *(real_time_clock + SUBSEC_CTR_OFFSET) > (loop_cap)) // Delay check
+          || (rollover && *(real_time_clock + SUBSEC_CTR_OFFSET) < SLEEP_MASK && *(real_time_clock + SUBSEC_CTR_OFFSET) < loop_cap)) { // Rollover check
             break;
         }
     }
 
 }
-
 
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
@@ -283,7 +284,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     memset(plaintext, 'A', sizeof(subscription_update_packet_t));
 
     // decrypt the encrypted update packet with random delays
-    // randomSleep();
+    randomSleep();
     // decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext)
     int32_t dec_val = decrypt_sym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, (uint8_t *)&encryptedData->auth_tag, \
         (uint8_t *)&encryptedData->aad_p1, \
@@ -303,6 +304,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     free(plaintext);
     plaintext = NULL;
 
+    randomSleep();
     // check if the decoder id corresponds to our decoder ID
     if (update.decoder_id != DECODER_ID) {
         print_error("Bad decoder id");
@@ -315,6 +317,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+    randomSleep();
     // check that the start_timestamp is before the end_timestamp
     if (update.start_timestamp > update.end_timestamp) {
         print_error("Bad timestamp (bad order)");
@@ -327,6 +330,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+    randomSleep();
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
         print_error("Bad timestamp (too soon)");
@@ -362,7 +366,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
-    // randomSleep();
+    randomSleep();
 
     /* assuming the channel, nonce, and tag are present in the encrypted
        frame packet, calculate the size of the encrypted frame */
@@ -381,6 +385,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     }
     print_debug("Packet length okay\n");
 
+    randomSleep();
     // is channel number an unsigned int >=0 and <=8?
     if (enc_frame->channel < 0 || enc_frame->channel > 8) {
         print_error("Channel outside of valid range\n");
@@ -501,6 +506,14 @@ void init() {
         flash_simple_erase_page(FLASH_STATUS_ADDR);
         flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     }
+
+    // Enable RTC : Page 287
+    volatile uint32_t* real_time_clock = (volatile uint32_t*)RTC_CTRL_ADDR;
+    while ((*(real_time_clock) & RTC_BUSY)>>3 == 1);
+    *(real_time_clock) |= RTC_WRITE_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>3 == 1);
+    *(real_time_clock) |= RTC_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>3 == 1);
 
     // Enable TRNG : page 91
     volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
