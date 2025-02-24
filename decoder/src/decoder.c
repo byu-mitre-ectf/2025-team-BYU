@@ -142,11 +142,31 @@ timestamp_t next_time_allowed = 0;
  *  Utilizes the TRNG Module on the MAX78000
  *  See page 367 of the User Guide for more information
  */
-uint32_t true_random() {
+uint32_t true_random(void) {
     volatile uint32_t* trand_base = (volatile uint32_t*)TRAND_BASE_ADDR; 
     // Every time that offset is accessed, it clears the status bit and regenerates a random number  
     uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET);
+    print_debug("Random number generated");
     return random_num;
+}
+
+// borrowed from https://github.com/wolfSSL/wolfssl/blob/master/IDE/GCC-ARM/Source/wolf_main.c
+int32_t true_random_block(uint8_t *output, uint32_t sz) {
+    uint32_t i = 0;
+
+    while (i < sz) {
+        // make sure that there is room for a whole nother uint32_t AND that memory is aligned properly
+        if ((i + sizeof(CUSTOM_RAND_TYPE)) > sz || ((uint32_t)&output[i] % sizeof(CUSTOM_RAND_TYPE)) != 0) {
+            // just input a byte at a time in these cases
+            output[i++] = (uint8_t)true_random();
+        }
+        else {
+            *((CUSTOM_RAND_TYPE*)&output[i]) = true_random();
+            i += sizeof(CUSTOM_RAND_TYPE);
+        }
+    }
+
+    return 0;
 }
 
 
@@ -287,7 +307,9 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
   
     // decrypt the encrypted update packet with random delays
     // randomSleep();
+    print_debug("Got to before decryption");
     int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
+    print_debug("Got to after decryption");
 
     // check that the decrypt function was successful
     if (decryptStatus != 0) {
