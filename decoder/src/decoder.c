@@ -32,8 +32,8 @@
 #define EMERGENCY_CHANNEL 0
 #define MAX_FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
-#define ENCRYPTED_DATA_SIZE 256
-#define AUTH_DATA_SIZE 8
+#define ENCRYPTED_DATA_SIZE 56
+#define AUTH_DATA_SIZE 4
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
@@ -83,11 +83,13 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[MAC_KEY_SIZE];
+    uint8_t channel_key[CHACHAPOLY_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
-    uint8_t auth_tag[MAC_KEY_SIZE];
+    uint8_t aad_p1[AUTH_DATA_SIZE];
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
 
@@ -150,38 +152,24 @@ uint32_t true_random(void) {
     return random_num;
 }
 
-// borrowed from https://github.com/wolfSSL/wolfssl/blob/master/IDE/GCC-ARM/Source/wolf_main.c
-int32_t true_random_block(uint8_t *output, uint32_t sz) {
-    uint32_t i = 0;
-
-    while (i < sz) {
-        // make sure that there is room for a whole nother uint32_t AND that memory is aligned properly
-        if ((i + sizeof(CUSTOM_RAND_TYPE)) > sz || ((uint32_t)&output[i] % sizeof(CUSTOM_RAND_TYPE)) != 0) {
-            // just input a byte at a time in these cases
-            output[i++] = (uint8_t)true_random();
-        }
-        else {
-            *((CUSTOM_RAND_TYPE*)&output[i]) = true_random();
-            i += sizeof(CUSTOM_RAND_TYPE);
-        }
-    }
-
-    return 0;
-}
-
 
 /** @brief Generate random sleep delay
  * 
  *  No params, void.
 */
-void randomSleep() {
+void randomSleep(void) {
     uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
     
     uint32_t random_num = true_random(); // Random num value
     // Get 7 bits becaus clock period is .25 ms 
     // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
     random_num &= 0x7F;
+    char buffer[100];
+    snprintf(buffer, sizeof(buffer), "Random num: %u", random_num);
+    print_debug(buffer);
     uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
+    snprintf(buffer, sizeof(buffer), "Base clock: %u", base_clk);
+    print_debug(buffer);
 
     while (1) { // Loop for random wait
         if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
@@ -221,6 +209,8 @@ int list_channels() {
     pkt_len_t len = 0;
 
     resp.n_channels = 0;
+
+    randomSleep();
 
     // delete any lingering data
     memset(&resp, 0, sizeof(list_response_t));
@@ -275,7 +265,6 @@ int list_channels() {
 int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
     // stores the calculated Poly1305 hash
     print_debug("started the function");
-    uint8_t calculated_tag[AUTHTAG_SIZE];
 
     char buffer[100];
 
@@ -286,37 +275,33 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
     
-    // calculate the hash of the RSA-encrypted data + additional auth data to ensure it hasn't been tampered with
-    // randomSleep();
-    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_verify_key, MAC_KEY_SIZE, calculated_tag);
-
-    // check if the hash function was successful
-    if (hashStatus != 0) {
-        print_error("Hash failed");
-        return -1;
-    }
-    
-    // if the calculated hash and sent hash do not match, terminate the program
-    if (memcmp(encryptedData->auth_tag, calculated_tag, sizeof(calculated_tag)) != 0) {
-        print_error("hash mismatch!");
-        return -1;
-    }
-    
     // stores the decrypted update packet
     subscription_update_packet_t update;
-  
+
+    // set up buffer to store decrypted frame data
+    uint8_t *plaintext = malloc(sizeof(subscription_update_packet_t));
+    memset(plaintext, 'A', sizeof(subscription_update_packet_t));
+
     // decrypt the encrypted update packet with random delays
     // randomSleep();
-    print_debug("Got to before decryption");
-    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
-    print_debug("Got to after decryption");
+    // decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext)
+    int32_t dec_val = decrypt_sym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, (uint8_t *)&encryptedData->auth_tag, \
+        (uint8_t *)&encryptedData->aad_p1, \
+        subscription_decrypt_key, (uint8_t *)&encryptedData->nonce, \
+        plaintext);
 
-    // check that the decrypt function was successful
-    if (decryptStatus != 0) {
-        snprintf(buffer, sizeof(buffer), "Failed decrypt: %d", decryptStatus);
+    // check if the decryption function ran successfully
+    if (dec_val != 0) {
+        snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
         print_error(buffer);
         return -1;
     }
+    print_debug("Decryption succeeded\n");
+
+    memcpy(&update, plaintext, sizeof(subscription_update_packet_t));
+    memset(plaintext, 'A', sizeof(subscription_update_packet_t));
+    free(plaintext);
+    plaintext = NULL;
 
     // check if the decoder id corresponds to our decoder ID
     if (update.decoder_id != DECODER_ID) {
