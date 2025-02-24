@@ -79,11 +79,11 @@ def gen_secrets(channels: list[int], args):
     rsa_keys_directory = Path("rsa_keys")
     rsa_keys_directory.mkdir(parents=True, exist_ok=True)
 
-    private_key_filename = rsa_keys_directory / f"private_key.pem"
-    public_key_filename = rsa_keys_directory / f"public_key.pem"
+    # private_key_filename = rsa_keys_directory / f"private_key.pem"
+    # public_key_filename = rsa_keys_directory / f"public_key.pem"
 
-    write_file(private_key_filename, private_key.export_key(), args, "wb", "xb")
-    write_file(public_key_filename, public_key, args, "wb", "xb")
+    # write_file(private_key_filename, private_key.export_key(), args, "wb", "xb")
+    # write_file(public_key_filename, public_key, args, "wb", "xb")
 
     rsa_private_hex = private_key.export_key(format="DER").hex()
     rsa_public_hex = public_key.hex()
@@ -101,9 +101,9 @@ def gen_secrets(channels: list[int], args):
 
 #include "adv_crypto.h"
 
-uint8_t subscription_decrypt_key[{len(rsa_private_array)}] = """ + "{" + rsa_private_array + "}" + """;
+uint8_t subscription_decrypt_key[{len(bytes.fromhex(rsa_private_hex))}] = """ + "{" + rsa_private_array + "}" + """;
 
-uint8_t subscription_verify_key[POLY_KEY_SIZE] = """ + "{" + hmac_key_array + "}" + """;
+uint8_t subscription_verify_key[MAC_KEY_SIZE] = """ + "{" + hmac_key_array + "}" + """;
 
 uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
 
@@ -125,7 +125,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
     secrets = {
         "channel_keys": chacha_hex,
         "hmac_key": hmac_hex,
-        "rsa_private_key": rsa_private_hex,
+        # "rsa_private_key": rsa_private_hex,
         "rsa_public_key": rsa_public_hex,
     }
 
