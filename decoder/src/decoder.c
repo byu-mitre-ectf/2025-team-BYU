@@ -334,8 +334,20 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     memcpy(decoder_status.subscribed_channels[update.channel].channel_key, update.channel_key, CHACHAPOLY_KEY_SIZE);
 
     // write all channel subscriptions to flash
-    flash_simple_erase_page(FLASH_STATUS_ADDR);
-    flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+    int32_t ret;
+    ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
+    if (ret < 0) {
+        STATUS_LED_ERROR();
+        // if uart fails to initialize, do not continue to execute
+        while (1);
+    }
+    
+    ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+    if (ret < 0) {
+        STATUS_LED_ERROR();
+        // if uart fails to initialize, do not continue to execute
+        while (1);
+    }
 
     // send a success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
@@ -425,9 +437,21 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
         decoder_status.subscribed_channels[enc_frame->channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
         decoder_status.subscribed_channels[enc_frame->channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
 
+        int32_t ret;
         // write deleted key from disk
-        flash_simple_erase_page(FLASH_STATUS_ADDR);
-        flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
+
+        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
 
         return -1;
     }
@@ -453,7 +477,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 /** @brief Initializes peripherals for system boot.
 */
 void init() {
-    int ret;
+    int32_t ret;
 
     // initialize the flash peripheral to enable access to persistent memory
     flash_simple_init();
@@ -491,8 +515,19 @@ void init() {
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
 
         // write the starting channel subscriptions into flash
-        flash_simple_erase_page(FLASH_STATUS_ADDR);
-        flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
+
+        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
+        if (ret < 0) {
+            STATUS_LED_ERROR();
+            // if uart fails to initialize, do not continue to execute
+            while (1);
+        }
     }
 
     // Enable TRNG : page 91
