@@ -55,7 +55,7 @@ def gen_secrets(channels: list[int], args):
     subscription_key = get_random_bytes(KEY_SIZE)
 
     subscription_key_array = str(list(subscription_key))[1:-1]
-    chacha_zero_array = str(list(chacha_keys['0']))[1:-1]
+    chacha_zero_array = str(list(bytes.fromhex(chacha_keys['0'])))[1:-1]
 
     # print(f"Poly Key: {poly_key_array}")
     # print(f"Chacha Key: {chacha_zero_array}")
