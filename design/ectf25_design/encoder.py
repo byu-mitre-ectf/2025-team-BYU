@@ -41,9 +41,9 @@ class Encoder:
         # Ensures a frame is equal to or over 64 bytes
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes!")
-        # Ensures that the channel number is between 0 and 8
-        if not (0 <= channel <= 8):
-            raise ValueError("Channel number must be an unsigned int between 0 and 8!")
+        # Ensures that the channel number is an unsigned int (32 bytes)
+        if not (0 <= channel <= 0xffffffff):
+            raise ValueError("Channel number must be an unsigned 32 byte integer!")
         # Ensures that the timestamp is an unsigned long long int
         if not (0 <= timestamp <= (2**64 - 1)):
             raise ValueError("Timestamp must be an unsigned long long integer!")

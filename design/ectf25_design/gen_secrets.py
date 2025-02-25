@@ -45,17 +45,15 @@ def gen_secrets(channels: list[int], args):
     """
 
     # Generate chacha keys for each channel 
-    chacha_keys = []
-    try:
-        chacha_keys = [get_random_bytes(KEY_SIZE) for _ in range(9)]
-    except Exception as e:
-        logger.error(f"Error generating chacha keys: {e}")
+    chacha_keys = dict()
+    for channel in channels:
+        chacha_keys[str(channel)] = get_random_bytes(KEY_SIZE).hex()
 
     # Generate subscription key
     subscription_key = get_random_bytes(KEY_SIZE)
 
     subscription_key_array = str(list(subscription_key))[1:-1]
-    chacha_zero_array = str(list(chacha_keys[0]))[1:-1]
+    chacha_zero_array = str(list(chacha_keys['0']))[1:-1]
 
     # print(f"Poly Key: {poly_key_array}")
     # print(f"Chacha Key: {chacha_zero_array}")
@@ -80,12 +78,12 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
     write_file(header_file_path, header_file_content, args, "w", "x")
 
     subscription_hex = subscription_key.hex()
-    chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
-    print(chacha_hex)
+    # chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
+    # print(chacha_hex)
 
     # Format secrets and write them to .json file
     secrets = {
-        "channel_keys": chacha_hex,
+        "channel_keys": chacha_keys,
         "subscription_key": subscription_hex,
     }
 
