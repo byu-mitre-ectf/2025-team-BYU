@@ -38,12 +38,17 @@
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
 /////////////////////// Hardware Constants ///////////////////
+// User Guide to the MAX78000 : https://www.analog.com/media/en/technical-documentation/user-guides/max78000-user-guide.pdf
+// Offsets to peripheral registers from Page 37
 #define GCR_BASE (0x40000000)
+#define TRAND_BASE_ADDR (0x4004D000)
+#define REAL_TIME_CLOCK_ADDR (0x40006000)
+// GCR Offset from Page 80 and shift for trand disable from Page 91
 #define GCR_PCLKDIS1_BASE (GCR_BASE + 0x48)
 #define GCR_TRAND_DISABLE (1<<2)
-#define TRAND_BASE_ADDR (0x4004D000) // page 37 of the User Guide
+// Shifts for trand from Page 367
 #define TRAND_DATA_OFFSET (0x08 >> 2)
-#define REAL_TIME_CLOCK_ADDR (0x40006000)
+// Real Time clock shifts from Page 279
 #define SUBSEC_CTR_OFFSET (0x04 >> 2)
 #define RTC_CTRL_ADDR (REAL_TIME_CLOCK_ADDR + 0x10)
 #define RTC_BUSY (0x01 << 3)
@@ -51,6 +56,7 @@
 #define RTC_WRITE_ENABLE (0x01 << 15)
 #define RTC_ENABLE (0x01)
 #define RTC_SSEC_MAX 0xfff
+
 #define SLEEP_MASK 0x7f
 #define get_list_byte_size(a) (4 + (a * 20)) // 4 header bytes + 20 bytes per channel
 
@@ -141,6 +147,28 @@ timestamp_t next_time_allowed = 0;
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
+
+/** @brief Initializes the Real Time Clock on the hardware
+ * 
+ * No params, void. See page 91
+ */
+void init_trng() {
+    volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
+    *pclkdis1 &= ~GCR_TRAND_DISABLE;
+}
+
+/** @brief Initializes the Real Time Clock on the hardware
+ * 
+ * No params, void. See page 287
+ */
+void init_rtc() {
+    volatile uint32_t* real_time_clock = (volatile uint32_t*)RTC_CTRL_ADDR;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+    *(real_time_clock) |= RTC_WRITE_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+    *(real_time_clock) |= RTC_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+}
  
 /** @brief Generate a random, 32-bit unsigned integer
  * 
@@ -158,7 +186,9 @@ uint32_t true_random(void) {
 
 /** @brief Generate random sleep delay
  * 
- *  No params, void. Page 279
+ *  No params, void. 
+ *  Utilizes the Real Time Clock of the MAX78000
+ *  See page 279 of the User Guide for more information
 */
 void randomSleep(void) {
     volatile uint32_t* real_time_clock = (volatile uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
@@ -203,13 +233,11 @@ int is_subscribed(channel_id_t channel) {
  * 
  *  @return 0 if successful.
 */
-int list_channels() {
+int list_channels(void) {
     list_response_t resp;
     pkt_len_t len = 0;
 
     resp.n_channels = 0;
-
-    randomSleep();
 
     // delete any lingering data
     memset(&resp, 0, sizeof(list_response_t));
@@ -255,7 +283,7 @@ int list_channels() {
 /** @brief Updates the channel subscription using a provided encrypted update packet.
  *
  *  @param pkt_len The length of the message received over UART
- *  @param encryptedData An RSA encrypted packet that contains a poly1305 authTag and the encrypted subscription_update_packet_t data.
+ *  @param encryptedData A Chacha20-Poly1305 encrypted packet that contains a random data, a chacha-poly IV, a poly1305 authTag and the encrypted subscription_update_packet_t data.
  *
  *  @note Take care to note that this system is little endian.
  *
@@ -276,7 +304,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // decrypt the encrypted update packet with random delays
     randomSleep();
-    // decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext)
+    // decrypt_sym(ciphertext, len, authTag, aad, key, iv, plaintext)
     int32_t dec_val = decrypt_sym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, (uint8_t *)&encryptedData->auth_tag, \
         (uint8_t *)&encryptedData->aad_p1, \
         subscription_decrypt_key, (uint8_t *)&encryptedData->nonce, \
@@ -287,6 +315,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+    // take care of any potential memory corruption concerns with the malloc call
     memcpy(&update, plaintext, sizeof(subscription_update_packet_t));
     memset(plaintext, 'A', sizeof(subscription_update_packet_t));
     free(plaintext);
@@ -314,7 +343,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
-    randomSleep();
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
         return -1;
@@ -438,7 +466,6 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
         return -1;
     }
 
-
     // is the timestamp >= next allowed
     if (decrypted_frame.timestamp < next_time_allowed) {
         return -1;
@@ -508,17 +535,8 @@ void init() {
         }
     }
 
-    // Enable RTC : Page 287
-    volatile uint32_t* real_time_clock = (volatile uint32_t*)RTC_CTRL_ADDR;
-    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
-    *(real_time_clock) |= RTC_WRITE_ENABLE;
-    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
-    *(real_time_clock) |= RTC_ENABLE;
-    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
-
-    // Enable TRNG : page 91
-    volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
-    *pclkdis1 &= ~GCR_TRAND_DISABLE;
+    init_trng();
+    init_rtc();
 
     // initialize the UART peripheral to enable serial I/O
     ret = uart_init();
