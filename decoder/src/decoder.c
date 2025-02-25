@@ -32,22 +32,26 @@
 #define EMERGENCY_CHANNEL 0
 #define MAX_FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
-#define ENCRYPTED_DATA_SIZE 256
-#define AUTH_DATA_SIZE 8
+#define ENCRYPTED_DATA_SIZE 56
+#define AUTH_DATA_SIZE 4
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
 
 /////////////////////// Hardware Constants ///////////////////
 #define GCR_BASE (0x40000000)
 #define GCR_PCLKDIS1_BASE (GCR_BASE + 0x48)
+#define GCR_TRAND_DISABLE (1<<2)
 #define TRAND_BASE_ADDR (0x4004D000) // page 37 of the User Guide
-#define TRAND_CTRL_OFFSET (0x00 >> 2)
-#define TRAND_STATUS_OFFSET (0x04 >> 2)
 #define TRAND_DATA_OFFSET (0x08 >> 2)
 #define REAL_TIME_CLOCK_ADDR (0x40006000)
 #define SUBSEC_CTR_OFFSET (0x04 >> 2)
-#define RTC_KEYWIPE_BIT (0x01 << 15)
-#define RTC_KEYGEN_BIT (0x01 << 3)
+#define RTC_CTRL_ADDR (REAL_TIME_CLOCK_ADDR + 0x10)
+#define RTC_BUSY (0x01 << 3)
+#define RTC_BUSY_SHIFT 3
+#define RTC_WRITE_ENABLE (0x01 << 15)
+#define RTC_ENABLE (0x01)
+#define RTC_SSEC_MAX 0xfff
+#define SLEEP_MASK 0x7f
 #define get_list_byte_size(a) (4 + (a * 20)) // 4 header bytes + 20 bytes per channel
 
 /**********************************************************
@@ -83,11 +87,13 @@ typedef struct {
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
-    uint8_t channel_key[MAC_KEY_SIZE];
+    uint8_t channel_key[CHACHAPOLY_KEY_SIZE];
 } subscription_update_packet_t;
 
 typedef struct {
-    uint8_t auth_tag[MAC_KEY_SIZE];
+    uint8_t aad_p1[AUTH_DATA_SIZE];
+    uint8_t nonce[CHACHAPOLY_IV_SIZE];
+    uint8_t auth_tag[AUTHTAG_SIZE];
     uint8_t cipher_text[ENCRYPTED_DATA_SIZE];
 } encrypted_update_packet_t;
 
@@ -112,7 +118,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
-    uint8_t channel_key[MAC_KEY_SIZE];
+    uint8_t channel_key[CHACHAPOLY_KEY_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -142,7 +148,7 @@ timestamp_t next_time_allowed = 0;
  *  Utilizes the TRNG Module on the MAX78000
  *  See page 367 of the User Guide for more information
  */
-uint32_t true_random() {
+uint32_t true_random(void) {
     volatile uint32_t* trand_base = (volatile uint32_t*)TRAND_BASE_ADDR; 
     // Every time that offset is accessed, it clears the status bit and regenerates a random number  
     uint32_t random_num = *(trand_base + TRAND_DATA_OFFSET);
@@ -152,27 +158,28 @@ uint32_t true_random() {
 
 /** @brief Generate random sleep delay
  * 
- *  No params, void.
+ *  No params, void. Page 279
 */
-void randomSleep() {
-    uint32_t* real_time_clock = (uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
+void randomSleep(void) {
+    volatile uint32_t* real_time_clock = (volatile uint32_t*)REAL_TIME_CLOCK_ADDR; // Base addr from user guide
     
     uint32_t random_num = true_random(); // Random num value
     // Get 7 bits becaus clock period is .25 ms 
     // .25ms * 0 to .25ms * 127 = random range 0ms - 32ms
-    random_num &= 0x7F;
+    random_num &= SLEEP_MASK;
+
     uint32_t base_clk = *(real_time_clock + SUBSEC_CTR_OFFSET); // Starting clk value
+    uint16_t loop_cap = (base_clk + random_num) & RTC_SSEC_MAX;
+    bool rollover = loop_cap < base_clk;
 
     while (1) { // Loop for random wait
-        if (*(real_time_clock + SUBSEC_CTR_OFFSET) > (base_clk + random_num) // Delay check
-          || *(real_time_clock + SUBSEC_CTR_OFFSET) < base_clk // Rollover check
-          || *(real_time_clock) == 0) { // Rollover double check
+        if ((!rollover && *(real_time_clock + SUBSEC_CTR_OFFSET) > (loop_cap)) // Delay check
+          || (rollover && *(real_time_clock + SUBSEC_CTR_OFFSET) < SLEEP_MASK && *(real_time_clock + SUBSEC_CTR_OFFSET) < loop_cap)) { // Rollover check
             break;
         }
     }
 
 }
-
 
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
@@ -201,6 +208,8 @@ int list_channels() {
     pkt_len_t len = 0;
 
     resp.n_channels = 0;
+
+    randomSleep();
 
     // delete any lingering data
     memset(&resp, 0, sizeof(list_response_t));
@@ -253,76 +262,61 @@ int list_channels() {
  *  @return 0 upon success. -1 if error.
 */
 int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
-    // stores the calculated Poly1305 hash
-    print_debug("started the function");
-    uint8_t calculated_tag[AUTHTAG_SIZE];
-
-    char buffer[100];
-
     // ensure that the UART message size matches the expected size of an encrypted update packet
     if (sizeof(encrypted_update_packet_t) != pkt_len) {
-        snprintf(buffer, sizeof(buffer), "Failed length check. Packet length: %d; Expected: %d\n", pkt_len, sizeof(encrypted_update_packet_t));
-        print_error(buffer);
-        return -1;
-    }
-    
-    // calculate the hash of the RSA-encrypted data + additional auth data to ensure it hasn't been tampered with
-    // randomSleep();
-    int hashStatus = digest(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_verify_key, MAC_KEY_SIZE, calculated_tag);
-
-    // check if the hash function was successful
-    if (hashStatus != 0) {
-        print_error("Hash failed");
-        return -1;
-    }
-    
-    // if the calculated hash and sent hash do not match, terminate the program
-    if (memcmp(encryptedData->auth_tag, calculated_tag, sizeof(calculated_tag)) != 0) {
-        print_error("hash mismatch!");
         return -1;
     }
     
     // stores the decrypted update packet
     subscription_update_packet_t update;
-  
-    // decrypt the encrypted update packet with random delays
-    // randomSleep();
-    int decryptStatus = decrypt_asym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, subscription_decrypt_key, sizeof(subscription_decrypt_key), (uint8_t *)&update, sizeof(subscription_update_packet_t));
 
-    // check that the decrypt function was successful
-    if (decryptStatus != 0) {
-        snprintf(buffer, sizeof(buffer), "Failed decrypt: %d", decryptStatus);
-        print_error(buffer);
+    // set up buffer to store decrypted frame data
+    uint8_t *plaintext = malloc(sizeof(subscription_update_packet_t));
+    memset(plaintext, 'A', sizeof(subscription_update_packet_t));
+
+    // decrypt the encrypted update packet with random delays
+    randomSleep();
+    // decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *authTag, uint8_t *aad, uint8_t *key, uint8_t *iv, uint8_t *plaintext)
+    int32_t dec_val = decrypt_sym(encryptedData->cipher_text, ENCRYPTED_DATA_SIZE, (uint8_t *)&encryptedData->auth_tag, \
+        (uint8_t *)&encryptedData->aad_p1, \
+        subscription_decrypt_key, (uint8_t *)&encryptedData->nonce, \
+        plaintext);
+
+    // check if the decryption function ran successfully
+    if (dec_val != 0) {
         return -1;
     }
 
+    memcpy(&update, plaintext, sizeof(subscription_update_packet_t));
+    memset(plaintext, 'A', sizeof(subscription_update_packet_t));
+    free(plaintext);
+    plaintext = NULL;
+
+    randomSleep();
     // check if the decoder id corresponds to our decoder ID
     if (update.decoder_id != DECODER_ID) {
-        print_error("Bad decoder id");
         return -1;
     }
     
     // check that channel is a non-emergency valid channel
     if (update.channel < 1 || update.channel > 8) {
-        print_error("Bad channel");
         return -1;
     }
 
+    randomSleep();
     // check that the start_timestamp is before the end_timestamp
     if (update.start_timestamp > update.end_timestamp) {
-        print_error("Bad timestamp (bad order)");
         return -1;
     }
 
     // check that the subscription is not expired
     if (update.end_timestamp < next_time_allowed) {
-        print_error("Bad timestamp (already expired)");
         return -1;
     }
 
+    randomSleep();
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
-        print_error("Bad timestamp (too soon)");
         return -1;
     }
 
@@ -367,7 +361,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
-    // randomSleep();
+    randomSleep();
 
     /* assuming the channel, nonce, and tag are present in the encrypted
        frame packet, calculate the size of the encrypted frame */
@@ -375,30 +369,24 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // ensure there is at least one byte in the frame (other than the timestamp) to decrypt
     if (encrypted_size < sizeof(timestamp_t)+1) {
-        print_error("Packet length of DECODE frame is too small\n");
         return -1;
     }
 
     // ensure that no more than 64 bytes of encrypted data is sent with the timestamp
     if (encrypted_size > MAX_FRAME_SIZE + sizeof(timestamp_t)) {
-        print_error("Packet length of DECODE frame is too large\n");
         return -1;
     }
-    print_debug("Packet length okay\n");
 
+    randomSleep();
     // is channel number an unsigned int >=0 and <=8?
     if (enc_frame->channel < 0 || enc_frame->channel > 8) {
-        print_error("Channel outside of valid range\n");
         return -1;
     }
-    print_debug("Channel inside valid range\n");
 
     // is decoder subscribed to the channel?
     if (!is_subscribed(enc_frame->channel)) {
-        print_error("Not subscribed to channel\n");
         return -1;
     }
-    print_debug("Decoder is subscribed to channel\n");
 
     // set up buffer to store decrypted frame data
     uint8_t *plaintext = malloc(sizeof(frame_packet_t));
@@ -413,12 +401,8 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // check if the decryption function ran successfully
     if (dec_val != 0) {
-        char buffer[100];
-        snprintf(buffer, sizeof(buffer), "Decryption failed: %d\n", dec_val);
-        print_error(buffer);
         return -1;
     }
-    print_debug("Decryption succeeded\n");
 
     // fill in the decrypted frame object
     memcpy(&decrypted_frame, plaintext, sizeof(frame_packet_t));
@@ -429,8 +413,6 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // is the timestamp within decoder's subscription period?
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||
      decrypted_frame.timestamp > decoder_status.subscribed_channels[enc_frame->channel].end_timestamp) {
-        print_error("Timestamp outside of subscription time\n");
-
         // delete key from memory and mark channel as unsubscribed
         memset(decoder_status.subscribed_channels[enc_frame->channel].channel_key, 0, CHACHAPOLY_KEY_SIZE);
         decoder_status.subscribed_channels[enc_frame->channel].active = false;
@@ -455,15 +437,12 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
         return -1;
     }
-    print_debug("Timestamp inside subscription time\n");
 
 
     // is the timestamp >= next allowed
     if (decrypted_frame.timestamp < next_time_allowed) {
-        print_error("Timestamp is less than next time allowed\n");
         return -1;
     }
-    print_debug("Timestamp greater than or equal to next time allowed");
 
     // play decoded TV frame
     write_packet(DECODE_MSG, decrypted_frame.data, encrypted_size-sizeof(timestamp_t));
@@ -491,7 +470,6 @@ void init() {
         *  This data will be persistent across reboots of the decoder. Whenever the decoder
         *  processes a subscription update, this data will be updated.
         */
-        print_debug("First boot. Setting flash...\n");
 
         // mark the decoder as having booted before, and thus all the data in decoder_status can be trusted
         decoder_status.first_boot = FLASH_FIRST_BOOT;
@@ -506,10 +484,10 @@ void init() {
         }
 
         // set the channel 0 key in memory
-        subscription[0].start_timestamp = 0;
-        subscription[0].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        subscription[0].active = true;
-        memcpy(subscription[0].channel_key, channel_0_key, CHACHAPOLY_KEY_SIZE);
+        subscription[EMERGENCY_CHANNEL].start_timestamp = 0;
+        subscription[EMERGENCY_CHANNEL].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        subscription[EMERGENCY_CHANNEL].active = true;
+        memcpy(subscription[EMERGENCY_CHANNEL].channel_key, channel_0_key, CHACHAPOLY_KEY_SIZE);
 
         // write the starting channel subscriptions into RAM
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
@@ -530,9 +508,17 @@ void init() {
         }
     }
 
+    // Enable RTC : Page 287
+    volatile uint32_t* real_time_clock = (volatile uint32_t*)RTC_CTRL_ADDR;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+    *(real_time_clock) |= RTC_WRITE_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+    *(real_time_clock) |= RTC_ENABLE;
+    while ((*(real_time_clock) & RTC_BUSY)>>RTC_BUSY_SHIFT == 1);
+
     // Enable TRNG : page 91
     volatile uint32_t* pclkdis1 = (volatile uint32_t*)GCR_PCLKDIS1_BASE;
-    *pclkdis1 = ~(1<<2);
+    *pclkdis1 &= ~GCR_TRAND_DISABLE;
 
     // initialize the UART peripheral to enable serial I/O
     ret = uart_init();
@@ -548,7 +534,6 @@ void init() {
  **********************************************************/
 
 int main(void) {
-    char output_buf[128] = {0};
     // also could do length checks if this size proves problematic
     uint8_t uart_buf[0x10000];
     msg_type_t cmd;
@@ -558,19 +543,11 @@ int main(void) {
     // initialize the device
     init();
 
-    print_debug("Decoder Booted!\n");
-
     // process commands forever
     while (1) {
-        print_debug("Ready\n");
-
-        STATUS_LED_GREEN();
-
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
         if (result < 0) {
-            STATUS_LED_ERROR();
-            print_error("Failed to receive cmd from host\n");
             continue;
         }
 
@@ -579,28 +556,21 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-            STATUS_LED_CYAN();
-
             list_channels();
             break;
 
         // Handle decode command
         case DECODE_MSG:
-            STATUS_LED_PURPLE();
             decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
-            STATUS_LED_YELLOW();
             update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
             break;
 
         // Handle bad command
         default:
-            STATUS_LED_ERROR();
-            snprintf(output_buf, sizeof(output_buf), "Invalid Command: %c\n", cmd);
-            print_error(output_buf);
             break;
         }
     }

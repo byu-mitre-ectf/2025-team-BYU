@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define TFM_TIMING_RESISTANT
 #define ECC_TIMING_RESISTANT
 #define WC_RSA_BLINDING

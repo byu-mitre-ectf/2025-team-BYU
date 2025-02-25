@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 import struct, hmac, hashlib
 from loguru import logger
-from Crypto.Cipher import PKCS1_OAEP
-from Crypto.PublicKey import RSA
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.Random import get_random_bytes
 
 def take_hmac(key, message):
     hmac_object = hmac.new(key, digestmod=hashlib.sha256)
@@ -40,22 +40,17 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     source_message = packed_numbers + bytes.fromhex(channel_key)
     
     # Get RSA device private key from global secrets.
-    rsa_pub_pem = secrets["rsa_public_key"]
-    rsa_key = RSA.import_key(bytes.fromhex(rsa_pub_pem))
+    sub_key = bytes.fromhex(secrets["subscription_key"])
+    aad = get_random_bytes(4)
+    nonce = get_random_bytes(12)
+
+    cipher = ChaCha20_Poly1305.new(key=sub_key, nonce=nonce)
+    cipher.update(aad + nonce)
     
-    # Encrypt with RSA and OEAP padding (compatible with C code)
-    cipher = PKCS1_OAEP.new(rsa_key)
-    enc_msg = cipher.encrypt(source_message)
+    ciphertext, tag = cipher.encrypt_and_digest(source_message)
     
-    # Get HMAC device key from global secrets.
-    hmac_key = secrets.get("hmac_key")
-    hmac_key = bytes.fromhex(hmac_key)
-    
-    # Compute Poly1305 MAC tag of the RSA output using the Poly1305 device key.
-    mac_tag = take_hmac(hmac_key, enc_msg)
-    
-    # Append MAC to encrypted source message.
-    final_subscription = mac_tag + enc_msg
+    # Final message
+    final_subscription = aad + nonce + tag + ciphertext
  
     # Pack the subscription. This will be sent to the decoder with ectf25.tv.subscribe
     return final_subscription
