@@ -46,9 +46,10 @@ def gen_secrets(channels: list[int], args):
 
     # Generate chacha keys for each channel 
     chacha_keys = dict()
+    channels.append(0)
     for channel in channels:
         # is this the correct way to error handle here? What should be done if it's outside of the range?
-        if 0 <= channel <= 0xffffffff:
+        if 0 < channel <= 0xffffffff:
             chacha_keys[str(channel)] = get_random_bytes(KEY_SIZE).hex()
 
     # Generate subscription key
