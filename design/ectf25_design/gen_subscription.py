@@ -33,8 +33,13 @@ The output of this will be passed to the Decoder using ectf25.tv.subscribe
     packed_numbers = struct.pack("<IQQI", device_id, start, end, channel)
     
     # Retrieve the channel key from secrets.
-    # (This will likely need to be changed as I don't actually know how the secrets are stored...)
-    channel_key = secrets["channel_keys"][str(channel)]
+    try:
+        channel_key = secrets["channel_keys"][str(channel)]
+    except:
+        # what kind of error should this throw and how should it be handled?
+        # accessing an invalid channel key will give you an array access error of some kind I think
+        print("Couldn't find channel with that number!")
+        return -1
 
     # Append the channel key (converted to bytes) to the packed numbers
     source_message = packed_numbers + bytes.fromhex(channel_key)
@@ -96,6 +101,10 @@ def main():
     subscription = gen_subscription(
         args.secrets_file.read(), args.device_id, args.start, args.end, args.channel
     )
+
+    # this logic may need to be edited, I'm cooking dinner rn
+    if subscription == -1:
+        return
  
     # Print the generated subscription for your own debugging
     # Attackers will NOT have access to the output of this (although they may have
