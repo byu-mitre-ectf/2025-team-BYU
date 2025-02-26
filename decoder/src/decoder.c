@@ -211,19 +211,6 @@ void randomSleep(void) {
 
 }
 
-/** @brief Checks whether the decoder is subscribed to a given channel
- *
- *  @param channel The channel number to be checked.
- *  @return 1 if the the decoder is subscribed to the channel.  0 if not.
-*/
-int is_subscribed(channel_id_t channel) {
-    // Check if the decoder has has a subscription
-    if (decoder_status.subscribed_channels[channel].active) {
-        return 1;
-    }
-    return 0;
-}
-
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -327,33 +314,44 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
     
-    // check that channel is a non-emergency valid channel
-    if (update.channel < 1 || update.channel > 8) {
-        return -1;
-    }
+    // update channel can be any uint32_t, so we don't need a check
 
-    randomSleep();
     // check that the start_timestamp is before the end_timestamp
     if (update.start_timestamp > update.end_timestamp) {
         return -1;
     }
 
+    randomSleep();
     // check that the subscription is not expired
     if (update.end_timestamp < next_time_allowed) {
         return -1;
     }
 
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
-    if (decoder_status.subscribed_channels[update.channel].active && (update.end_timestamp < decoder_status.subscribed_channels[update.channel].end_timestamp)) {
-        return -1;
+    uint8_t current_idx = 0;
+    for (int i = 1; i < 9; i++) {
+        // if this index isn't active, we can overwrite it
+        if (!decoder_status.subscribed_channels[i].active && current_idx == 0) {
+            current_idx = i;
+        }
+        if (decoder_status.subscribed_channels[i].active && decoder_status.subscribed_channels[i].id == update.channel) {
+            if (update.end_timestamp < decoder_status.subscribed_channels[i].end_timestamp) {
+                return -1;
+            }
+            // if we find the channel id in our structure, we want the current index to be set to that index to overwrite
+            current_idx = i;
+            break;
+        }
     }
+    // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
+    if (current_idx == 0) { return -1; }
 
     // write the channel subscription to RAM
-    decoder_status.subscribed_channels[update.channel].active = true;
-    decoder_status.subscribed_channels[update.channel].id = update.channel;
-    decoder_status.subscribed_channels[update.channel].start_timestamp = update.start_timestamp;
-    decoder_status.subscribed_channels[update.channel].end_timestamp = update.end_timestamp;
-    memcpy(decoder_status.subscribed_channels[update.channel].channel_key, update.channel_key, CHACHAPOLY_KEY_SIZE);
+    decoder_status.subscribed_channels[current_idx].active = true;
+    decoder_status.subscribed_channels[current_idx].id = update.channel;
+    decoder_status.subscribed_channels[current_idx].start_timestamp = update.start_timestamp;
+    decoder_status.subscribed_channels[current_idx].end_timestamp = update.end_timestamp;
+    memcpy(decoder_status.subscribed_channels[current_idx].channel_key, update.channel_key, CHACHAPOLY_KEY_SIZE);
 
     // write all channel subscriptions to flash
     int32_t ret;
@@ -406,15 +404,20 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     }
 
     randomSleep();
-    // is channel number an unsigned int >=0 and <=8?
-    if (enc_frame->channel < 0 || enc_frame->channel > 8) {
-        return -1;
+    // channel number can be anything, but we need to make sure it's actually in the grid
+    uint8_t current_idx = 0xff;
+    for (int i = 0; i < 9; i++) {
+        if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
+            current_idx = i;
+            if (decoder_status.subscribed_channels[i].active == false) {
+                // make sure that channel is ACTIVE, not just subscribed
+                return -1;
+            }
+            break;
+        }
     }
-
-    // is decoder subscribed to the channel?
-    if (!is_subscribed(enc_frame->channel)) {
-        return -1;
-    }
+    // if current_idx didn't update, it's a bad channel and we can die
+    if (current_idx == 0xff) { return -1; }
 
     // set up buffer to store decrypted frame data
     uint8_t *plaintext = malloc(sizeof(frame_packet_t));
@@ -424,7 +427,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     // randomSleep();
     int32_t dec_val = decrypt_sym(enc_frame->encrypted_data, encrypted_size, enc_frame->auth_tag,
         (uint8_t *)&enc_frame->channel,
-        (uint8_t *)&decoder_status.subscribed_channels[enc_frame->channel].channel_key, (uint8_t *)&enc_frame->nonce,
+        (uint8_t *)&decoder_status.subscribed_channels[current_idx].channel_key, (uint8_t *)&enc_frame->nonce,
         plaintext);
 
     // check if the decryption function ran successfully
@@ -439,13 +442,13 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     plaintext = NULL;
 
     // is the timestamp within decoder's subscription period?
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[enc_frame->channel].start_timestamp ||
-     decrypted_frame.timestamp > decoder_status.subscribed_channels[enc_frame->channel].end_timestamp) {
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp ||
+     decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
         // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[enc_frame->channel].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[enc_frame->channel].active = false;
-        decoder_status.subscribed_channels[enc_frame->channel].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        decoder_status.subscribed_channels[enc_frame->channel].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
+        decoder_status.subscribed_channels[current_idx].active = false;
+        decoder_status.subscribed_channels[current_idx].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
+        decoder_status.subscribed_channels[current_idx].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
 
         int32_t ret;
         // write deleted key from disk
@@ -503,7 +506,9 @@ void init() {
 
         channel_status_t subscription[MAX_CHANNEL_COUNT];
 
-        for (int i = 0; i < MAX_CHANNEL_COUNT; i++){
+        // I think this is still fine because we don't care about ids
+        for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
+            subscription[i].id = 0;
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
@@ -511,6 +516,7 @@ void init() {
         }
 
         // set the channel 0 key in memory
+        subscription[EMERGENCY_CHANNEL].id = EMERGENCY_CHANNEL;
         subscription[EMERGENCY_CHANNEL].start_timestamp = 0;
         subscription[EMERGENCY_CHANNEL].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
         subscription[EMERGENCY_CHANNEL].active = true;
