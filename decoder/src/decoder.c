@@ -383,24 +383,31 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // ensure there is at least one byte in the frame (other than the timestamp) to decrypt
     if (encrypted_size < sizeof(timestamp_t)+1) {
+        print_error("Size too small");
         return -1;
     }
 
     // ensure that no more than 64 bytes of encrypted data is sent with the timestamp
     if (encrypted_size > MAX_FRAME_SIZE + sizeof(timestamp_t)) {
+        print_error("Data size too small");
         return -1;
     }
 
     randomSleep();
     // channel number can be anything, but we need to make sure it's actually in the grid
     uint8_t current_idx = 0xff;
-    for (int i = 1; i < 9; i++) {
+    for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
-            if (!decoder_status.subscribed_channels[i].active) {
+            if (decoder_status.subscribed_channels[i].active == false) {
                 // make sure that channel is ACTIVE, not just subscribed
+                char buffer[100];
+                snprintf(buffer, sizeof(buffer), "Channel id: %u, Active: %u", decoder_status.subscribed_channels[i].id, decoder_status.subscribed_channels[i].active);
+                print_debug(buffer);
+                print_error("Channel not active");
                 return -1;
             }
+            break;
         }
     }
     // if current_idx didn't update, it's a bad channel and we can die
@@ -482,7 +489,8 @@ void init() {
         channel_status_t subscription[MAX_CHANNEL_COUNT];
 
         // I think this is still fine because we don't care about ids
-        for (int i = 0; i < MAX_CHANNEL_COUNT; i++){
+        for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
+            subscription[i].id = 0;
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
@@ -490,6 +498,7 @@ void init() {
         }
 
         // set the channel 0 key in memory
+        subscription[EMERGENCY_CHANNEL].id = EMERGENCY_CHANNEL;
         subscription[EMERGENCY_CHANNEL].start_timestamp = 0;
         subscription[EMERGENCY_CHANNEL].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
         subscription[EMERGENCY_CHANNEL].active = true;
@@ -531,6 +540,7 @@ int main(void) {
 
     // process commands forever
     while (1) {
+        STATUS_LED_GREEN();
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
         if (result < 0) {
@@ -542,16 +552,19 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
+            STATUS_LED_CYAN();
             list_channels();
             break;
 
         // Handle decode command
         case DECODE_MSG:
+            STATUS_LED_PURPLE();
             decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
+            STATUS_LED_YELLOW();
             update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
             break;
 
