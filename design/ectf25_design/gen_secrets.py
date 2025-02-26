@@ -124,7 +124,7 @@ def main():
     args = parse_args()
 
     # Call generate secrets to create the .json and .h files.
-    gen_secrets(args.channels, args)
+    gen_secrets(args.channels)
 
 if __name__ == "__main__":
     main()
