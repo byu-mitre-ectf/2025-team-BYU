@@ -18,30 +18,27 @@ from Crypto.Random import get_random_bytes
 
 KEY_SIZE = 32
     
-def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
+def write_file(filepath: Path, content, mode: str):
     """Write content to a file.
 
     :param filepath: Path to the file
     :param content: Data to write
-    :param args: Arguments inputed when the code is run
     :param mode: File open mode
-    :param backup_mode File open mode when args.force is false
     """
     try:
-        with open(filepath, mode if args.force else backup_mode) as file:
+        with open(filepath, mode) as file:
             file.write(content)
     except Exception as e:
             logger.error(f"Error creating and writing to {filepath} : {e}")
 
 
-def gen_secrets(channels: list[int], args):
+def gen_secrets(channels: list[int]):
     """Generate the contents of the .json secrets file and the .h secrets file
 
     This will be passed to the Encoder, ectf25_design.gen_subscription, and the build
     process of the decoder
 
     :param channels: List of channel numbers
-    :param args: The arguments inputed when the code is run
     """
 
     # Generate chacha keys for each channel 
@@ -79,11 +76,9 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
     secrets_directory.mkdir(parents=True, exist_ok=True)
 
     header_file_path = "global.secrets/secrets.h"
-    write_file(header_file_path, header_file_content, args, "w", "x")
+    write_file(header_file_path, header_file_content, "w")
 
     subscription_hex = subscription_key.hex()
-    # chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
-    # print(chacha_hex)
 
     # Format secrets and write them to .json file
     secrets = {
@@ -93,7 +88,7 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
 
     python_secrets_file = "global.secrets/secrets.json"
     json_content = json.dumps(secrets).encode()
-    write_file(python_secrets_file, json_content, args, "wb", "xb")
+    write_file(python_secrets_file, json_content, "wb")
 
 def parse_args():
     """Define and parse the command line arguments
