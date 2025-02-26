@@ -383,13 +383,11 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // ensure there is at least one byte in the frame (other than the timestamp) to decrypt
     if (encrypted_size < sizeof(timestamp_t)+1) {
-        print_error("Size too small");
         return -1;
     }
 
     // ensure that no more than 64 bytes of encrypted data is sent with the timestamp
     if (encrypted_size > MAX_FRAME_SIZE + sizeof(timestamp_t)) {
-        print_error("Data size too small");
         return -1;
     }
 
@@ -401,10 +399,6 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
             current_idx = i;
             if (decoder_status.subscribed_channels[i].active == false) {
                 // make sure that channel is ACTIVE, not just subscribed
-                char buffer[100];
-                snprintf(buffer, sizeof(buffer), "Channel id: %u, Active: %u", decoder_status.subscribed_channels[i].id, decoder_status.subscribed_channels[i].active);
-                print_debug(buffer);
-                print_error("Channel not active");
                 return -1;
             }
             break;
@@ -540,7 +534,6 @@ int main(void) {
 
     // process commands forever
     while (1) {
-        STATUS_LED_GREEN();
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
         if (result < 0) {
@@ -552,19 +545,16 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-            STATUS_LED_CYAN();
             list_channels();
             break;
 
         // Handle decode command
         case DECODE_MSG:
-            STATUS_LED_PURPLE();
             decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
-            STATUS_LED_YELLOW();
             update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
             break;
 
