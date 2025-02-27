@@ -451,28 +451,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // is the timestamp within decoder's subscription period?
     if (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
-        // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[current_idx].active = false;
-        decoder_status.subscribed_channels[current_idx].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        decoder_status.subscribed_channels[current_idx].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-
-        int32_t ret;
-        // write deleted key from disk
-        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
-        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
+        // we can't delete the key :sob:
         return -1;
     }
 
