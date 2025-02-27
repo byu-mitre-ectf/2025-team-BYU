@@ -18,7 +18,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     gcc-arm-none-eabi \
     binutils-arm-none-eabi \
     make \
-    python3.10 \
+    python3\
     git \
     wget \
     libtool \
@@ -35,7 +35,8 @@ ENV MAXIM_PATH=/root/msdk-2024_02
 
 WORKDIR /decoder
 
-ENTRYPOINT ["bash", "-c", "make release DECODER_ID=${DECODER_ID} && cp build/max78000.elf build/max78000.bin /out"]
+ENTRYPOINT ["bash", "-c", "python3 ./make_secrets_h.py && make release DECODER_ID=${DECODER_ID} && cp build/max78000.elf build/max78000.bin /out"]
+#ENTRYPOINT ["bash"]
 
 # Sample run command:
 # docker run --rm -v ./build_out:/out -v ./:/decoder -v ./secrets:/secrets -e DECODER_ID=0xdeadbeef decoder
