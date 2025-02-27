@@ -231,8 +231,8 @@ int list_channels(void) {
 
     // start at i = 1 because we don't print out channel 0
     for (uint32_t i = 1; i < MAX_CHANNEL_COUNT; i++) {
-        // check to see if there's an VALID subscription for that channel - just checking if it has been updated from UINT_MAX
-        if (decoder_status.subscribed_channels[i].start_timestamp != DEFAULT_CHANNEL_TIMESTAMP) {
+        // check to see if there's an VALID subscription for that channel
+        if (decoder_status.subscribed_channels[i].active) {
             // double check that we have space to fit the channel info in resp
             if (resp.n_channels >= MAX_CHANNEL_COUNT) {
                 return -1;
@@ -410,10 +410,6 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
-            // if (decoder_status.subscribed_channels[i].active == false) {
-            //     // make sure that channel is ACTIVE, not just subscribed
-            //     return -1;
-            // }
             break;
         }
     }
@@ -452,7 +448,6 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     if (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
         // we can't delete the key :sob:
         // memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[current_idx].active = false;
 
         int32_t ret;
         // write deleted key from disk
