@@ -440,9 +440,13 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     free(plaintext);
     plaintext = NULL;
 
+    // if the timestamp is BEFORE our subscription period, just quit
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) {
+        return -1;
+    }
+
     // is the timestamp within decoder's subscription period?
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp ||
-     decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
+    if (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
         // delete key from memory and mark channel as unsubscribed
         memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
         decoder_status.subscribed_channels[current_idx].active = false;
