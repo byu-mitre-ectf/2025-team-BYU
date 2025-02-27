@@ -327,10 +327,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+
     // should throw an error if we try to update channel 0
     if (update.channel == 0) {
         return -1;
     }
+  
+    // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
+    if (current_idx == 0) { return -1; }
 
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     uint8_t current_idx = 0;
@@ -411,6 +415,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     randomSleep();
     // channel number can be anything, but we need to make sure it's actually in the grid
     uint8_t current_idx = 0xff;
+  
     for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
@@ -446,9 +451,13 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     free(plaintext);
     plaintext = NULL;
 
+    // if the timestamp is BEFORE our subscription period, just quit
+    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) {
+        return -1;
+    }
+
     // is the timestamp within decoder's subscription period?
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp ||
-     decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
+    if (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
         // delete key from memory and mark channel as unsubscribed
         memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
         decoder_status.subscribed_channels[current_idx].active = false;
