@@ -18,71 +18,42 @@ from Crypto.Random import get_random_bytes
 
 KEY_SIZE = 32
     
-def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
+def write_file(filepath: Path, content, mode: str):
     """Write content to a file.
 
     :param filepath: Path to the file
     :param content: Data to write
-    :param args: Arguments inputed when the code is run
     :param mode: File open mode
-    :param backup_mode File open mode when args.force is false
     """
     try:
-        with open(filepath, mode if args.force else backup_mode) as file:
+        with open(filepath, mode) as file:
             file.write(content)
     except Exception as e:
             logger.error(f"Error creating and writing to {filepath} : {e}")
 
 
-def gen_secrets(channels: list[int], args):
+def gen_secrets(channels: list[int]):
     """Generate the contents of the .json secrets file and the .h secrets file
 
     This will be passed to the Encoder, ectf25_design.gen_subscription, and the build
     process of the decoder
 
     :param channels: List of channel numbers
-    :param args: The arguments inputed when the code is run
     """
 
     # Generate chacha keys for each channel 
     chacha_keys = dict()
     channels.append(0)
+    channels = list(set(channels))
     for channel in channels:
         # is this the correct way to error handle here? What should be done if it's outside of the range?
-        if 0 < channel <= 0xffffffff:
+        if 0 <= channel <= 0xffffffff:
             chacha_keys[str(channel)] = get_random_bytes(KEY_SIZE).hex()
 
     # Generate subscription key
     subscription_key = get_random_bytes(KEY_SIZE)
 
-    subscription_key_array = str(list(subscription_key))[1:-1]
-    chacha_zero_array = str(list(bytes.fromhex(chacha_keys['0'])))[1:-1]
-
-    # print(f"Poly Key: {poly_key_array}")
-    # print(f"Chacha Key: {chacha_zero_array}")
-    # print(f"RSA Key: {rsa_private_array}")
-    header_file_content = f"""#ifndef SECRETS_H
-#define SECRETS_H
-
-#include "adv_crypto.h"
-
-uint8_t subscription_decrypt_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + subscription_key_array + "}" + """;
-
-uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
-
-#endif // SECRETS_H
-"""
-
-    # Create global.secrets directory for .h file and .json file
-    secrets_directory = Path("global.secrets")
-    secrets_directory.mkdir(parents=True, exist_ok=True)
-
-    header_file_path = "global.secrets/secrets.h"
-    write_file(header_file_path, header_file_content, args, "w", "x")
-
     subscription_hex = subscription_key.hex()
-    # chacha_hex = {str(i): chacha_keys[i].hex() for i in range(len(chacha_keys))}
-    # print(chacha_hex)
 
     # Format secrets and write them to .json file
     secrets = {
@@ -90,9 +61,8 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
         "subscription_key": subscription_hex,
     }
 
-    python_secrets_file = "global.secrets/secrets.json"
     json_content = json.dumps(secrets).encode()
-    write_file(python_secrets_file, json_content, args, "wb", "xb")
+    return json_content
 
 def parse_args():
     """Define and parse the command line arguments
@@ -128,7 +98,12 @@ def main():
     args = parse_args()
 
     # Call generate secrets to create the .json and .h files.
-    gen_secrets(args.channels, args)
+    secrets = gen_secrets(args.channels)
+
+    with open(args.secrets_file, "wb" if args.force else "xb") as f:
+        # Dump the secrets to the file
+        f.write(secrets)
+
 
 if __name__ == "__main__":
     main()

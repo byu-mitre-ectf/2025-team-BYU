@@ -327,6 +327,15 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+
+    // should throw an error if we try to update channel 0
+    if (update.channel == 0) {
+        return -1;
+    }
+  
+    // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
+    if (current_idx == 0) { return -1; }
+
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     uint8_t current_idx = 0;
     for (int i = 1; i < 9; i++) {
@@ -406,13 +415,15 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     randomSleep();
     // channel number can be anything, but we need to make sure it's actually in the grid
     uint8_t current_idx = 0xff;
-    for (int i = 1; i < 9; i++) {
+  
+    for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
-            if (!decoder_status.subscribed_channels[i].active) {
+            if (decoder_status.subscribed_channels[i].active == false) {
                 // make sure that channel is ACTIVE, not just subscribed
                 return -1;
             }
+            break;
         }
     }
     // if current_idx didn't update, it's a bad channel and we can die
@@ -510,7 +521,8 @@ void init() {
         channel_status_t subscription[MAX_CHANNEL_COUNT];
 
         // I think this is still fine because we don't care about ids
-        for (int i = 0; i < MAX_CHANNEL_COUNT; i++){
+        for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
+            subscription[i].id = 0;
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
@@ -518,6 +530,7 @@ void init() {
         }
 
         // set the channel 0 key in memory
+        subscription[EMERGENCY_CHANNEL].id = EMERGENCY_CHANNEL;
         subscription[EMERGENCY_CHANNEL].start_timestamp = 0;
         subscription[EMERGENCY_CHANNEL].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
         subscription[EMERGENCY_CHANNEL].active = true;
@@ -563,6 +576,7 @@ int main(void) {
     uint8_t uart_buf[0x10000];
     msg_type_t cmd;
     int result;
+    int retval;
     uint16_t pkt_len;
 
     // initialize the device
@@ -581,17 +595,20 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-            list_channels();
+            retval = list_channels();
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle decode command
         case DECODE_MSG:
-            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            retval = decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
-            update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            retval = update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle bad command
