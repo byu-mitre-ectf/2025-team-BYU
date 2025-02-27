@@ -53,31 +53,6 @@ def gen_secrets(channels: list[int]):
     # Generate subscription key
     subscription_key = get_random_bytes(KEY_SIZE)
 
-    subscription_key_array = str(list(subscription_key))[1:-1]
-    chacha_zero_array = str(list(bytes.fromhex(chacha_keys["0"])))[1:-1]
-
-    # print(f"Poly Key: {poly_key_array}")
-    # print(f"Chacha Key: {chacha_zero_array}")
-    # print(f"RSA Key: {rsa_private_array}")
-    header_file_content = f"""#ifndef SECRETS_H
-#define SECRETS_H
-
-#include "adv_crypto.h"
-
-uint8_t subscription_decrypt_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + subscription_key_array + "}" + """;
-
-uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
-
-#endif // SECRETS_H
-"""
-
-    # Create global.secrets directory for .h file and .json file
-    secrets_directory = Path("global.secrets")
-    secrets_directory.mkdir(parents=True, exist_ok=True)
-
-    header_file_path = "global.secrets/secrets.h"
-    write_file(header_file_path, header_file_content, "w")
-
     subscription_hex = subscription_key.hex()
 
     # Format secrets and write them to .json file
@@ -86,9 +61,8 @@ uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}"
         "subscription_key": subscription_hex,
     }
 
-    python_secrets_file = "global.secrets/secrets.json"
     json_content = json.dumps(secrets).encode()
-    write_file(python_secrets_file, json_content, "wb")
+    return json_content
 
 def parse_args():
     """Define and parse the command line arguments
@@ -124,7 +98,12 @@ def main():
     args = parse_args()
 
     # Call generate secrets to create the .json and .h files.
-    gen_secrets(args.channels)
+    secrets = gen_secrets(args.channels)
+
+    with open(args.secrets_file, "wb" if args.force else "xb") as f:
+        # Dump the secrets to the file
+        f.write(secrets)
+
 
 if __name__ == "__main__":
     main()
