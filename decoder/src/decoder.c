@@ -327,6 +327,11 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
+    // should throw an error if we try to update channel 0
+    if (update.channel == 0) {
+        return -1;
+    }
+
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     uint8_t current_idx = 0;
     for (int i = 1; i < 9; i++) {
@@ -562,6 +567,7 @@ int main(void) {
     uint8_t uart_buf[0x10000];
     msg_type_t cmd;
     int result;
+    int retval;
     uint16_t pkt_len;
 
     // initialize the device
@@ -580,17 +586,20 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-            list_channels();
+            retval = list_channels();
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle decode command
         case DECODE_MSG:
-            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            retval = decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
-            update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            retval = update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            if (retval < 0) { print_error(); }
             break;
 
         // Handle bad command
