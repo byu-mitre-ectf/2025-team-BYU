@@ -332,9 +332,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     if (update.channel == 0) {
         return -1;
     }
-  
-    // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
-    if (current_idx == 0) { return -1; }
 
     // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
     uint8_t current_idx = 0;
