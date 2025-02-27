@@ -279,7 +279,6 @@ int list_channels(void) {
 int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedData) {
     // ensure that the UART message size matches the expected size of an encrypted update packet
     if (sizeof(encrypted_update_packet_t) != pkt_len) {
-        print_error("size bad");
         return -1;
     }
     
@@ -300,7 +299,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // check if the decryption function ran successfully
     if (dec_val != 0) {
-        print_error("bad dec");
         return -1;
     }
 
@@ -313,7 +311,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     randomSleep();
     // check if the decoder id corresponds to our decoder ID
     if (update.decoder_id != DECODER_ID) {
-        print_error("decoder id bad");
         return -1;
     }
     
@@ -321,21 +318,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // check that the start_timestamp is before the end_timestamp
     if (update.start_timestamp > update.end_timestamp) {
-        print_error("start timestamp bad");
         return -1;
     }
 
     randomSleep();
-    // check that the subscription is not expired
-    if (update.end_timestamp < next_time_allowed) {
-        print_error("end timestamp bad");
-        return -1;
-    }
-
+    // subscription updates do not need to be active, apparently
 
     // should throw an error if we try to update channel 0
     if (update.channel == 0) {
-        print_error("channel bad");
         return -1;
     }
 
@@ -347,10 +337,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
             current_idx = i;
         }
         if (decoder_status.subscribed_channels[i].active && decoder_status.subscribed_channels[i].id == update.channel) {
-            if (update.end_timestamp < decoder_status.subscribed_channels[i].end_timestamp) {
-                print_error("updated end timestamp bad");
-                return -1;
-            }
+            // we MUST accept the more recent one
             // if we find the channel id in our structure, we want the current index to be set to that index to overwrite
             current_idx = i;
             break;
@@ -358,7 +345,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     }
     // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
     if (current_idx == 0) {
-        print_error("idx bad");
         return -1;
     }
 
