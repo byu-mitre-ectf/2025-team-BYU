@@ -389,8 +389,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
-    randomSleep();
-
     /* assuming the channel, nonce, and tag are present in the encrypted
        frame packet, calculate the size of the encrypted frame */
     pkt_len_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
@@ -412,10 +410,10 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
-            if (decoder_status.subscribed_channels[i].active == false) {
-                // make sure that channel is ACTIVE, not just subscribed
-                return -1;
-            }
+            // if (decoder_status.subscribed_channels[i].active == false) {
+            //     // make sure that channel is ACTIVE, not just subscribed
+            //     return -1;
+            // }
             break;
         }
     }
@@ -444,6 +442,7 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     free(plaintext);
     plaintext = NULL;
 
+    randomSleep();
     // if the timestamp is BEFORE our subscription period, just quit
     if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) {
         return -1;
