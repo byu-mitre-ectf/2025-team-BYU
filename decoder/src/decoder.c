@@ -596,19 +596,19 @@ int main(void) {
         // Handle list command
         case LIST_MSG:
             retval = list_channels();
-            if (retval < 0) { print_error(); }
+            if (retval < 0) { print_error("Failed list channels"); }
             break;
 
         // Handle decode command
         case DECODE_MSG:
             retval = decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
-            if (retval < 0) { print_error(); }
+            if (retval < 0) { print_error("Failed decode"); }
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
             retval = update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
-            if (retval < 0) { print_error(); }
+            if (retval < 0) { print_error("Failed update subscription"); }
             break;
 
         // Handle bad command
