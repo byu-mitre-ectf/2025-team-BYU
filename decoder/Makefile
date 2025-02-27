@@ -423,9 +423,6 @@ endif
 
 DATA="HELLO"
 all:
-	echo "hello"
-	$(error $$DATA = $(DATA))
-	python3 make_secrets_h.py
 # 	Extend the functionality of the "all" recipe here
 	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
