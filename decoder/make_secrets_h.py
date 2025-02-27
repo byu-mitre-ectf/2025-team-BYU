@@ -1,6 +1,7 @@
 import json
 
-with open('/global.secrets/secrets.json', 'r') as f:
+# sam said global.secrets is a file
+with open('/global.secrets', 'r') as f:
     secrets_json = f.read()
 
 secrets_dict = json.loads(secrets_json)
