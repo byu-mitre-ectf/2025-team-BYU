@@ -602,7 +602,7 @@ int main(void) {
         // Handle decode command
         case DECODE_MSG:
             retval = decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
-            if (retval < 0) { print_error("Failed decode"); }
+            if (retval < 0) { print_error("Failed decode operation"); }
             break;
 
         // Handle subscribe command
