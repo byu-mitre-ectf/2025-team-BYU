@@ -12,7 +12,6 @@ Copyright: Copyright (c) 2025 The MITRE Corporation
 
 import argparse, json
 from pathlib import Path
-from loguru import logger
 from Crypto.Random import get_random_bytes
 
 # Key size in Bytes
@@ -41,14 +40,15 @@ def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
             pass
 
 def gen_secrets(channels: list[int]):
-    """Generate the contents of the .json secrets file and the .h secrets file.
+    """Generate the contents of the global.secrets file
 
     The generated secrets will be used by the Encoder, `ectf25_design.gen_subscription`, 
-    and the decoder's build process.
+    and the decoder's build process. To be used by the build process and decoder, a 
+    custom python file will run at build that generates a .h file with necessary data
+    for the decoder to function.
 
     Parameters
         channels (list[int]): List of channel numbers.
-
     """
 
 
@@ -65,9 +65,7 @@ def gen_secrets(channels: list[int]):
     # Generate a global subscription key
     subscription_key = get_random_bytes(KEY_SIZE)
 
-    subscription_hex = subscription_key.hex()
-
-    # Format secrets and write them to .json file
+    # Format and return secrets to be written in json form
     secrets = {
         "channel_keys": chacha_keys,
         "subscription_key": subscription_key.hex(),
@@ -129,7 +127,7 @@ def main():
     # Parse the command-line arguments
     args = parse_args()
 
-# Call generate secrets to create the .json and .h files.
+    # Call generate secrets to create the secrets data
     secrets = gen_secrets(args.channels)
 
     with open(args.secrets_file, "wb" if args.force else "xb") as f:

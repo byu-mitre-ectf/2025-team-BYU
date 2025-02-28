@@ -1,6 +1,5 @@
-import argparse, json, struct, hmac, hashlib
+import argparse, json, struct
 from pathlib import Path
-from loguru import logger
 from Crypto.Cipher import ChaCha20_Poly1305
 from Crypto.Random import get_random_bytes
 
