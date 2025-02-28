@@ -148,7 +148,7 @@ timestamp_t next_time_allowed = 0;
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
 
-/** @brief Initializes the Real Time Clock on the hardware
+/** @brief Initializes the True Random Number Generator on the hardware
  * 
  * No params, void. See page 91
  */
@@ -172,7 +172,7 @@ void init_rtc() {
  
 /** @brief Generate a random, 32-bit unsigned integer
  * 
- *  No params, void.
+ *  No params, returns a uint32_t.
  *  Utilizes the TRNG Module on the MAX78000
  *  See page 367 of the User Guide for more information
  */
@@ -231,7 +231,7 @@ int list_channels(void) {
 
     // start at i = 1 because we don't print out channel 0
     for (uint32_t i = 1; i < MAX_CHANNEL_COUNT; i++) {
-        // check to see if there's an active subscription for that channel
+        // check to see if there's an VALID subscription for that channel
         if (decoder_status.subscribed_channels[i].active) {
             // double check that we have space to fit the channel info in resp
             if (resp.n_channels >= MAX_CHANNEL_COUNT) {
@@ -322,12 +322,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     }
 
     randomSleep();
-    // check that the subscription is not expired
-    if (update.end_timestamp < next_time_allowed) {
+    // subscription updates do not need to be active, apparently
+
+    // should throw an error if we try to update channel 0
+    if (update.channel == 0) {
         return -1;
     }
 
-    // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
+    // if a valid subscription for that channel ALREADY exists, replace it
     uint8_t current_idx = 0;
     for (int i = 1; i < 9; i++) {
         // if this index isn't active, we can overwrite it
@@ -335,16 +337,16 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
             current_idx = i;
         }
         if (decoder_status.subscribed_channels[i].active && decoder_status.subscribed_channels[i].id == update.channel) {
-            if (update.end_timestamp < decoder_status.subscribed_channels[i].end_timestamp) {
-                return -1;
-            }
+            // we MUST accept the more recent one
             // if we find the channel id in our structure, we want the current index to be set to that index to overwrite
             current_idx = i;
             break;
         }
     }
     // make sure we don't accidentally overwrite the emergency channel : something in the default behavior failed; should never reach here
-    if (current_idx == 0) { return -1; }
+    if (current_idx == 0) {
+        return -1;
+    }
 
     // write the channel subscription to RAM
     decoder_status.subscribed_channels[current_idx].active = true;
@@ -358,14 +360,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
     if (ret < 0) {
         STATUS_LED_ERROR();
-        // if uart fails to initialize, do not continue to execute
+        // if writing to flash doesn't work, do not continue to execute
         while (1);
     }
     
     ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     if (ret < 0) {
         STATUS_LED_ERROR();
-        // if uart fails to initialize, do not continue to execute
+        // if writing to flash doesn't work, do not continue to execute
         while (1);
     }
 
@@ -387,8 +389,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     frame_packet_t decrypted_frame;
 
-    randomSleep();
-
     /* assuming the channel, nonce, and tag are present in the encrypted
        frame packet, calculate the size of the encrypted frame */
     pkt_len_t encrypted_size = pkt_len - (sizeof(channel_id_t) + CHACHAPOLY_IV_SIZE + AUTHTAG_SIZE);
@@ -406,13 +406,10 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     randomSleep();
     // channel number can be anything, but we need to make sure it's actually in the grid
     uint8_t current_idx = 0xff;
+  
     for (int i = 0; i < 9; i++) {
         if (decoder_status.subscribed_channels[i].id == enc_frame->channel) {
             current_idx = i;
-            if (decoder_status.subscribed_channels[i].active == false) {
-                // make sure that channel is ACTIVE, not just subscribed
-                return -1;
-            }
             break;
         }
     }
@@ -441,31 +438,9 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     free(plaintext);
     plaintext = NULL;
 
-    // is the timestamp within decoder's subscription period?
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp ||
-     decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
-        // delete key from memory and mark channel as unsubscribed
-        memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-        decoder_status.subscribed_channels[current_idx].active = false;
-        decoder_status.subscribed_channels[current_idx].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-        decoder_status.subscribed_channels[current_idx].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
-
-        int32_t ret;
-        // write deleted key from disk
-        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
-        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
+    randomSleep();
+    // if the timestamp is not within our subscription period, just quit
+    if ((decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) || (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp)) {
         return -1;
     }
 
@@ -529,14 +504,14 @@ void init() {
         ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
         if (ret < 0) {
             STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
+            // if writing to flash doesn't work, do not continue to execute
             while (1);
         }
 
         ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
         if (ret < 0) {
             STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
+            // if writing to flash doesn't work, do not continue to execute
             while (1);
         }
     }
@@ -562,6 +537,7 @@ int main(void) {
     uint8_t uart_buf[0x10000];
     msg_type_t cmd;
     int result;
+    int retval;
     uint16_t pkt_len;
 
     // initialize the device
@@ -580,17 +556,20 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-            list_channels();
+            retval = list_channels();
+            if (retval < 0) { print_error("Failed list channels"); }
             break;
 
         // Handle decode command
         case DECODE_MSG:
-            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            retval = decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
+            if (retval < 0) { print_error("Failed decode operation"); }
             break;
 
         // Handle subscribe command
         case SUBSCRIBE_MSG:
-            update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            retval = update_subscription(pkt_len, (encrypted_update_packet_t *)uart_buf);
+            if (retval < 0) { print_error("Failed update subscription"); }
             break;
 
         // Handle bad command

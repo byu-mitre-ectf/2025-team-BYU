@@ -28,7 +28,13 @@ def gen_subscription( secrets: bytes, device_id: int, start: int, end: int, chan
     packed_numbers = struct.pack("<IQQI", device_id, start, end, channel)
     
     # Retrieve the global subscription key from secrets (used for encryption)
-    channel_key = secrets["channel_keys"][str(channel)]
+    try:
+        channel_key = secrets["channel_keys"][str(channel)]
+    except:
+        # what kind of error should this throw and how should it be handled?
+        # accessing an invalid channel key will give you an array access error of some kind I think
+        print("Couldn't find channel with that number!")
+        return -1
 
     # Combine the packed subscription details with the channel key (converted from hex to bytes)
     source_message = packed_numbers + bytes.fromhex(channel_key)
@@ -144,6 +150,10 @@ def main():
         args.end, 
         args.channel
     )
+
+    # this logic may need to be edited, I'm cooking dinner rn
+    if subscription == -1:
+        return
  
     # Attempt to write the subscription file
     # - Uses "wb" (write binary) mode if --force is specified (overwrites existing file)

@@ -31,24 +31,24 @@ def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
 
         Raises:
             Logs an error message if writing to the file fails.
+
     """
 
     try:
-        with open(filepath, mode if args.force else backup_mode) as file:
+        with open(filepath, mode) as file:
             file.write(content)
     except Exception as e:
             pass
 
-def gen_secrets(channels: list[int], args):
-
+def gen_secrets(channels: list[int]):
     """Generate the contents of the .json secrets file and the .h secrets file.
 
     The generated secrets will be used by the Encoder, `ectf25_design.gen_subscription`, 
     and the decoder's build process.
 
-    Parameters:
+    Parameters
         channels (list[int]): List of channel numbers.
-        args (Namespace): Parsed command-line arguments.
+
     """
 
 
@@ -65,41 +65,16 @@ def gen_secrets(channels: list[int], args):
     # Generate a global subscription key
     subscription_key = get_random_bytes(KEY_SIZE)
 
-    # Convert keys to array format for the .h file
-    subscription_key_array = str(list(subscription_key))[1:-1]
-    chacha_zero_array = str(list(bytes.fromhex(chacha_keys["0"])))[1:-1]
+    subscription_hex = subscription_key.hex()
 
-    # Generate the secrets.h file content
-    header_file_content = """#ifndef SECRETS_H
-#define SECRETS_H
-
-#include "adv_crypto.h"
-
-uint8_t subscription_decrypt_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + subscription_key_array + "}" + """;
-
-uint8_t channel_0_key[CHACHAPOLY_KEY_SIZE] = """ + "{" + chacha_zero_array + "}" + """;
-
-#endif // SECRETS_H
-"""
-
-    # Create the secrets directory if it doesn't exist
-    secrets_directory = Path("global.secrets")
-    secrets_directory.mkdir(parents=True, exist_ok=True)
-
-    # Write the secrets.h file
-    header_file_path = f"{secrets_directory}/secrets.h"
-    write_file(header_file_path, header_file_content, args, "w", "x")
-
-    # Convert secrets to JSON format
+    # Format secrets and write them to .json file
     secrets = {
         "channel_keys": chacha_keys,
         "subscription_key": subscription_key.hex(),
     }
 
-    # Write the secrets.json file
     json_content = json.dumps(secrets).encode()
-    python_secrets_file = f"{secrets_directory}/secrets.json"
-    write_file(python_secrets_file, json_content, args, "wb", "xb")
+    return json_content
 
 def parse_args():
 
@@ -154,8 +129,12 @@ def main():
     # Parse the command-line arguments
     args = parse_args()
 
-    # Call the gen_secrets function to generate the necessary .json and .h files
-    gen_secrets(args.channels, args)
+# Call generate secrets to create the .json and .h files.
+    secrets = gen_secrets(args.channels)
+
+    with open(args.secrets_file, "wb" if args.force else "xb") as f:
+        # Dump the secrets to the file
+        f.write(secrets)
 
 if __name__ == "__main__":
     main()
