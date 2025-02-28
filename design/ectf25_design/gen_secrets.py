@@ -16,28 +16,6 @@ from Crypto.Random import get_random_bytes
 
 # Key size in Bytes
 KEY_SIZE = 32
-    
-def write_file(filepath: Path, content, args, mode: str, backup_mode: str):
-
-    """Write content to a file, handling optional overwriting.
-
-        Parameters:
-            filepath (Path): The path to the file to be written.
-            content (str or bytes): The data to write to the file.
-            args (Namespace): Parsed command-line arguments, including `force` flag.
-            mode (str): File open mode when overwriting is allowed.
-            backup_mode (str): File open mode when `--force` is not provided (prevents overwriting).
-
-        Raises:
-            Logs an error message if writing to the file fails.
-
-    """
-
-    try:
-        with open(filepath, mode) as file:
-            file.write(content)
-    except Exception as e:
-            pass
 
 def gen_secrets(channels: list[int]):
     """Generate the contents of the global.secrets file
