@@ -148,7 +148,7 @@ timestamp_t next_time_allowed = 0;
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
 
-/** @brief Initializes the Real Time Clock on the hardware
+/** @brief Initializes the True Random Number Generator on the hardware
  * 
  * No params, void. See page 91
  */
@@ -172,7 +172,7 @@ void init_rtc() {
  
 /** @brief Generate a random, 32-bit unsigned integer
  * 
- *  No params, void.
+ *  No params, returns a uint32_t.
  *  Utilizes the TRNG Module on the MAX78000
  *  See page 367 of the User Guide for more information
  */
@@ -329,7 +329,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
         return -1;
     }
 
-    // if a valid subscription for that channel ALREADY exists, make sure the end_timestamp is later
+    // if a valid subscription for that channel ALREADY exists, replace it
     uint8_t current_idx = 0;
     for (int i = 1; i < 9; i++) {
         // if this index isn't active, we can overwrite it
@@ -360,14 +360,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
     ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
     if (ret < 0) {
         STATUS_LED_ERROR();
-        // if uart fails to initialize, do not continue to execute
+        // if writing to flash doesn't work, do not continue to execute
         while (1);
     }
     
     ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     if (ret < 0) {
         STATUS_LED_ERROR();
-        // if uart fails to initialize, do not continue to execute
+        // if writing to flash doesn't work, do not continue to execute
         while (1);
     }
 
@@ -439,32 +439,8 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
     plaintext = NULL;
 
     randomSleep();
-    // if the timestamp is BEFORE our subscription period, just quit
-    if (decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) {
-        return -1;
-    }
-
-    // is the timestamp within decoder's subscription period?
-    if (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp) {
-        // we can't delete the key :sob:
-        // memset(decoder_status.subscribed_channels[current_idx].channel_key, 0, CHACHAPOLY_KEY_SIZE);
-
-        int32_t ret;
-        // write deleted key from disk
-        ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
-        ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
-        if (ret < 0) {
-            STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
-            while (1);
-        }
-
+    // if the timestamp is not within our subscription period, just quit
+    if ((decrypted_frame.timestamp < decoder_status.subscribed_channels[current_idx].start_timestamp) || (decrypted_frame.timestamp > decoder_status.subscribed_channels[current_idx].end_timestamp)) {
         return -1;
     }
 
@@ -528,14 +504,14 @@ void init() {
         ret = flash_simple_erase_page(FLASH_STATUS_ADDR);
         if (ret < 0) {
             STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
+            // if writing to flash doesn't work, do not continue to execute
             while (1);
         }
 
         ret = flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
         if (ret < 0) {
             STATUS_LED_ERROR();
-            // if uart fails to initialize, do not continue to execute
+            // if writing to flash doesn't work, do not continue to execute
             while (1);
         }
     }
