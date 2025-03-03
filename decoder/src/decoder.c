@@ -299,6 +299,8 @@ int update_subscription(pkt_len_t pkt_len, encrypted_update_packet_t *encryptedD
 
     // check if the decryption function ran successfully
     if (dec_val != 0) {
+        free(plaintext);
+        plaintext = NULL;
         return -1;
     }
 
@@ -429,6 +431,8 @@ int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *enc_frame) {
 
     // check if the decryption function ran successfully
     if (dec_val != 0) {
+        free(plaintext);
+        plaintext = NULL;
         return -1;
     }
 
