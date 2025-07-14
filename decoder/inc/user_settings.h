@@ -1,0 +1,8 @@
+#include <stdint.h>
+#define TFM_TIMING_RESISTANT
+#define ECC_TIMING_RESISTANT
+#define WC_RSA_BLINDING
+#define WOLFSSL_CIPHER_TEXT_CHECK
+
+#define HAVE_CHACHA
+#define HAVE_POLY1305
